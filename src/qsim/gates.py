@@ -44,7 +44,7 @@ Toffoli in qsim is the same 2x2 X matrix as an ordinary X, applied to a quarter 
 the amplitudes.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
@@ -169,6 +169,7 @@ class _GateBase:
         self._kind = kind
         self.n_controls = n_controls
         self.n_targets = n_targets
+        self._adjoint_cache: _GateBase | None = None
 
     @property
     def label(self) -> str:
@@ -180,9 +181,14 @@ class _GateBase:
         """How many qubit handles this gate must be given."""
         return self.n_controls + self.n_targets
 
-    def _apply(
-        self, qubits: tuple[Qubit, ...], data: np.ndarray, params: tuple[float, ...]
-    ) -> None:
+    def _emit(self, qubits: tuple[Qubit, ...], params: tuple[float, ...]) -> None:
+        """Validate the handles and hand the circuit an ``Op`` describing this call.
+
+        Note what this does *not* do: touch the state. Since Phase 2 the circuit
+        decides whether an op runs now or is recorded for later transformation by a
+        combinator scope, and axis numbers are resolved at that point rather than here
+        — which is why an op stores qubit *ids*.
+        """
         if len(qubits) != self.n_qubits:
             raise QsimError(
                 f"{self.label} acts on {self.n_qubits} qubit(s) "
@@ -190,39 +196,49 @@ class _GateBase:
                 f"but got {len(qubits)}."
             )
         circuit = qubits[0]._circuit
-        # Resolves ids to axes and rejects a qubit passed twice (no-cloning), a
-        # released qubit, or handles from two different circuits.
-        axes = circuit._axes(qubits)
-        control_axes, target_axes = axes[: self.n_controls], axes[self.n_controls :]
+        # Rejects a qubit passed twice (no-cloning), a released qubit, and handles from
+        # two different circuits. Raises here, at the call site, even in record mode —
+        # an error is far more useful pointing at the line that caused it.
+        circuit._validate(qubits)
 
-        # Match the circuit's precision. Without this, a complex128 gate matrix would
-        # silently promote a complex64 state back to double and quietly undo the
-        # single-precision experiment of design doc §9 (T17).
-        data = data.astype(circuit._psi.dtype, copy=False)
-
-        from qsim import state
-
-        if self.n_controls:
-            if self._kind == _DIAG:
-                psi = state.apply_controlled_diag(circuit._psi, data, control_axes, target_axes[0])
-            else:
-                psi = state.apply_controlled(circuit._psi, data, control_axes, target_axes)
-        elif self._kind == _DIAG:
-            psi = state.apply_diag(circuit._psi, data, target_axes[0])
-        elif self._kind == _UNITARY1:
-            psi = state.apply_1q(circuit._psi, data, target_axes[0])
-        else:
-            psi = state.apply_2q(circuit._psi, data, target_axes[0], target_axes[1])
-
-        circuit._psi = psi
-        circuit._record(
+        circuit._emit(
             Op(
                 name=self.name,
                 qubit_ids=tuple(q._id for q in qubits[self.n_controls :]),
                 params=params,
                 controls=tuple(q._id for q in qubits[: self.n_controls]),
+                block=circuit._current_block,
+                gate=self,
             )
         )
+
+    def _data_for(self, params: tuple[float, ...]) -> np.ndarray:
+        """The matrix, diagonal or tensor this gate applies for the given parameters."""
+        raise NotImplementedError  # pragma: no cover - both subclasses override it
+
+    def adjoint(self) -> _GateBase:
+        """The gate that undoes this one. ``H.adjoint() is H``; ``S.adjoint()`` is S†.
+
+        Every gate has one, because every gate is a unitary and unitaries are always
+        invertible — which is the same fact as "no information is lost". Contrast a
+        classical AND gate: given only its output you cannot recover its inputs, so
+        there is no gate that undoes it.
+        """
+        # Built on demand and cached, then wired up mutually. Doing it lazily is what
+        # stops a controlled-S from recursing forever while trying to build the
+        # controlled-S† that would in turn need a controlled-S.
+        if self._adjoint_cache is None:
+            partner = self._build_adjoint()
+            self._adjoint_cache = partner
+            partner._adjoint_cache = self
+        return self._adjoint_cache
+
+    def _build_adjoint(self) -> _GateBase:
+        raise NotImplementedError  # pragma: no cover - both subclasses override it
+
+    def adjoint_op(self, op: Op) -> Op:
+        """The recorded operation that undoes ``op`` — used by ``with qc.adjoint()``."""
+        raise NotImplementedError  # pragma: no cover - both subclasses override it
 
     def __repr__(self) -> str:
         return f"<Gate {self.label} on {self.n_qubits} qubit(s)>"
@@ -239,17 +255,25 @@ class Gate(_GateBase):
         *,
         n_controls: int = 0,
         n_targets: int = 1,
-        inverse_name: str = "",
         full_name: str = "",
     ) -> None:
         super().__init__(name, kind, n_controls, n_targets, full_name)
         self._data = data
-        # Most fixed gates are their own inverse (applying X twice does nothing).
-        # S, T and SX are the exceptions and name their daggered partner.
-        self._inverse_name = inverse_name or name
+        # Most fixed gates are their own inverse (applying X twice does nothing). S, T
+        # and SX are the exceptions; their partners are wired up after both exist.
+        self._explicit_inverse: Gate | None = None
+        # Set by controlled(), so a derived gate can work out its own inverse.
+        self._controlled_from: tuple[Gate, int] | None = None
 
     def __call__(self, *qubits: Qubit) -> None:
-        self._apply(qubits, self._data, ())
+        self._emit(qubits, ())
+
+    def _data_for(self, params: tuple[float, ...]) -> np.ndarray:
+        return self._data
+
+    def adjoint(self) -> Gate:
+        """The gate that undoes this one. ``H.adjoint() is H``; ``S.adjoint()`` is S†."""
+        return cast(Gate, super().adjoint())
 
     def controlled(self, n: int = 1, *, name: str = "", full_name: str = "") -> Gate:
         """A version of this gate that only fires when ``n`` further qubits are all 1.
@@ -258,23 +282,38 @@ class Gate(_GateBase):
         matrix changes — control is implemented by slicing the state, so this is the
         same gate applied to a smaller piece of it.
         """
-        return Gate(
+        derived = Gate(
             name or "C" * n + self.name,
             self._kind,
             self._data,
             n_controls=self.n_controls + n,
             n_targets=self.n_targets,
-            inverse_name="",
             full_name=full_name or "Controlled" * n + self.full_name,
         )
+        derived._controlled_from = (self, n)
+        return derived
+
+    def _build_adjoint(self) -> Gate:
+        if self._explicit_inverse is not None:
+            return self._explicit_inverse
+        if self._controlled_from is not None:
+            base, n = self._controlled_from
+            base_inverse = base.adjoint()
+            if base_inverse is base:
+                return self  # controlling a self-inverse gate keeps it self-inverse
+            return base_inverse.controlled(n)
+        return self
 
     def adjoint_op(self, op: Op) -> Op:
-        """The recorded operation that undoes ``op``. Used by Phase 2's ``adjoint``."""
+        """The recorded operation that undoes ``op`` — used by ``with qc.adjoint()``."""
+        inverse = self.adjoint()
         return Op(
-            name=self._inverse_name,
+            name=inverse.name,
             qubit_ids=op.qubit_ids,
             params=op.params,
             controls=op.controls,
+            block=op.block,
+            gate=inverse,
         )
 
 
@@ -293,12 +332,26 @@ class ParametrizedGate(_GateBase):
         n_controls: int = 0,
         n_targets: int = 1,
         full_name: str = "",
+        sign: float = 1.0,
     ) -> None:
         super().__init__(name, kind, n_controls, n_targets, full_name)
         self._data_fn = data_fn
+        # +1 for the gate itself, -1 for its adjoint. A rotation is undone by rotating
+        # the other way, so the inverse of a parametrized gate is the same gate reading
+        # its angle backwards — no daggered partner is needed.
+        self._sign = sign
 
     def __call__(self, *qubits: Qubit, theta: float) -> None:
-        self._apply(qubits, self._data_fn(theta), (theta,))
+        # The recorded angle is the one actually applied, so an adjoint's history reads
+        # Rz(theta=-0.3) rather than Rz(theta=0.3) with a hidden minus sign.
+        self._emit(qubits, (self._sign * theta,))
+
+    def _data_for(self, params: tuple[float, ...]) -> np.ndarray:
+        return self._data_fn(params[0])
+
+    def adjoint(self) -> ParametrizedGate:
+        """The same rotation, read backwards: ``Rz.adjoint()(q, theta=t)`` applies −t."""
+        return cast(ParametrizedGate, super().adjoint())
 
     def controlled(
         self, n: int = 1, *, name: str = "", full_name: str = ""
@@ -311,6 +364,18 @@ class ParametrizedGate(_GateBase):
             n_controls=self.n_controls + n,
             n_targets=self.n_targets,
             full_name=full_name or "Controlled" * n + self.full_name,
+            sign=self._sign,
+        )
+
+    def _build_adjoint(self) -> ParametrizedGate:
+        return ParametrizedGate(
+            self.name,
+            self._kind,
+            self._data_fn,
+            n_controls=self.n_controls,
+            n_targets=self.n_targets,
+            full_name=self.full_name,
+            sign=-self._sign,
         )
 
     def adjoint_op(self, op: Op) -> Op:
@@ -324,6 +389,8 @@ class ParametrizedGate(_GateBase):
             qubit_ids=op.qubit_ids,
             params=tuple(-p for p in op.params),
             controls=op.controls,
+            block=op.block,
+            gate=self,
         )
 
 
@@ -349,14 +416,14 @@ Z = Gate("Z", _DIAG, _Z_PHASES, full_name="PauliZ")
 observable to a qubit in |0> or |1>, and turns |+> into |-> — invisible to
 measurement until something interferes with it."""
 
-S = Gate("S", _DIAG, _S_PHASES, inverse_name="S†", full_name="SqrtZ")
+S = Gate("S", _DIAG, _S_PHASES, full_name="SqrtZ")
 """A quarter turn about the z-axis: multiplies the |1> amplitude by i. S applied
 twice is Z, which is why its full name is ``SqrtZ``. (It is often called "the phase
 gate" in the literature; that name is taken here by the parametrized ``Phase``.)"""
 
-_S_DAGGER = Gate("S†", _DIAG, _S_DAGGER_PHASES, inverse_name="S", full_name="SqrtZDagger")
+_S_DAGGER = Gate("S†", _DIAG, _S_DAGGER_PHASES, full_name="SqrtZDagger")
 
-T = Gate("T", _DIAG, _T_PHASES, inverse_name="T†", full_name="FourthRootZ")
+T = Gate("T", _DIAG, _T_PHASES, full_name="FourthRootZ")
 """An eighth turn about z: multiplies the |1> amplitude by e^{i pi/4}. Applied four
 times it is Z, hence ``FourthRootZ``; applied twice it is S.
 
@@ -364,14 +431,14 @@ T is the non-Clifford ingredient — the one that makes quantum circuits hard to
 simulate classically. Circuits built only from H, S and CNOT can be simulated
 efficiently on an ordinary computer; adding T destroys that."""
 
-_T_DAGGER = Gate("T†", _DIAG, _T_DAGGER_PHASES, inverse_name="T", full_name="FourthRootZDagger")
+_T_DAGGER = Gate("T†", _DIAG, _T_DAGGER_PHASES, full_name="FourthRootZDagger")
 
-SX = Gate("SX", _UNITARY1, _SX_MATRIX, inverse_name="SX†", full_name="SqrtX")
+SX = Gate("SX", _UNITARY1, _SX_MATRIX, full_name="SqrtX")
 """The square root of X: applied twice, it is a bit flip. There is no such thing as
 "half of a classical NOT", which is a compact illustration that the space of quantum
 operations is bigger than the classical one."""
 
-_SX_DAGGER = Gate("SX†", _UNITARY1, _SX_DAGGER_MATRIX, inverse_name="SX", full_name="SqrtXDagger")
+_SX_DAGGER = Gate("SX†", _UNITARY1, _SX_DAGGER_MATRIX, full_name="SqrtXDagger")
 
 SWAP = Gate("SWAP", _UNITARY2, _SWAP_TENSOR, n_targets=2, full_name="Swap")
 """Exchanges two qubits. Equal to three alternating CNOTs — CNOT(a,b), CNOT(b,a),
@@ -444,6 +511,17 @@ RotationX = Rx
 RotationY = Ry
 RotationZ = Rz
 ControlledPhase = CPhase
+
+
+# The three gates that are not their own inverse, wired to their partners. Done here
+# rather than in the constructors because each pair refers to the other, and the two
+# objects cannot both exist before either is built.
+S._explicit_inverse = _S_DAGGER
+_S_DAGGER._explicit_inverse = S
+T._explicit_inverse = _T_DAGGER
+_T_DAGGER._explicit_inverse = T
+SX._explicit_inverse = _SX_DAGGER
+_SX_DAGGER._explicit_inverse = SX
 
 
 #: Every gate by name, so recorded history can be replayed (Phase 2's combinators).

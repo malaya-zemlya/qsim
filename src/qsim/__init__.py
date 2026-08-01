@@ -30,6 +30,7 @@ everything a real quantum computer would never let you see. The notebooks in
 
 from qsim import errors, gates, viz
 from qsim.circuit import Circuit, Op, Qubit, Register
+from qsim.combinators import Block, gate
 from qsim.errors import (
     DeadQubitError,
     DirtyAncillaError,
@@ -85,6 +86,9 @@ __all__ = [
     "Inspector",
     "Ket",
     "Bra",
+    # combinators
+    "Block",
+    "gate",
     # gates
     "Gate",
     "ParametrizedGate",

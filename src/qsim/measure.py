@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING
 
 from qsim import state
 from qsim.circuit import Op
+from qsim.errors import QsimError
 
 if TYPE_CHECKING:
     from qsim.circuit import Circuit, Qubit, Register
@@ -48,6 +49,16 @@ def measure(circuit: Circuit, q: Qubit) -> int:
     measurement leaves it in the state it reported, so the second is no longer
     random. Both are recorded in the history.
     """
+    if circuit._record_stack:
+        raise QsimError(
+            f"cannot measure {q._name} inside a combinator scope. Measurement is the "
+            "one irreversible operation in the library: it destroys the superposition "
+            "it reports on, so there is nothing to replay backwards and no way to "
+            "condition it on a control that is itself in superposition. Every other "
+            "operation here is a unitary, and unitaries can always be inverted and "
+            "controlled — that is exactly why the scopes work. Measure after the "
+            "scope has closed."
+        )
     axis = circuit._axis(q)
     outcome, psi = state.measure_axis(circuit._psi, axis, circuit._rng)
     circuit._psi = psi

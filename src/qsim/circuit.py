@@ -26,7 +26,7 @@ moment it acts. The story "axis k is qubit k" survives, one indirection away.
 """
 
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, overload
 
 import numpy as np
@@ -54,6 +54,13 @@ class Op:
     # Measurement is the one operation whose outcome is not determined by the program,
     # so it is the one operation that records a result.
     result: int | None = None
+    #: The block this op came from, if any — see ``@qsim.gate``. Grouping only: the op
+    #: itself is an ordinary elementary gate.
+    block: str = ""
+    #: The gate object that will carry this op out, so execution needs no name lookup.
+    #: ``None`` for measurement, which is not a gate. Excluded from equality and repr
+    #: because it is machinery, not part of the record you read.
+    gate: Any = field(default=None, compare=False, repr=False)
 
     @property
     def all_qubit_ids(self) -> tuple[int, ...]:
@@ -227,6 +234,13 @@ class Circuit:
         self._qubits: list[Qubit] = []
         self._next_id = 0
         self._history: list[Op] = []
+        # Combinator scopes push a buffer here. While the stack is non-empty the
+        # circuit is in *record mode*: gates append to the innermost buffer instead of
+        # running, so the scope can transform them before they execute.
+        self._record_stack: list[list[Op]] = []
+        # The name of the block currently being recorded, stamped onto each op.
+        self._current_block = ""
+        self._block_calls: list[str] = []
         self._rng = np.random.default_rng(seed)
         # A second, independent stream used only by inspect.sample(). Sampling is a
         # simulator cheat, not a physical measurement, so it must not consume draws
@@ -336,11 +350,109 @@ class Circuit:
     # ---- history summaries -----------------------------------------------------
 
     def gate_counts(self) -> dict[str, int]:
-        """How many times each operation appears in the history."""
+        """How many times each elementary operation appears in the history.
+
+        Counts what actually ran, so a block contributes the gates it expands into —
+        this is the answer to "what does this circuit cost". For the other question,
+        "what is this circuit made of", see :meth:`block_counts`.
+        """
         counts: dict[str, int] = {}
         for op in self._history:
             counts[op.name] = counts.get(op.name, 0) + 1
         return counts
+
+    def block_counts(self) -> dict[str, int]:
+        """How many times each ``@qsim.gate`` block was called."""
+        counts: dict[str, int] = {}
+        for name in self._block_calls:
+            counts[name] = counts.get(name, 0) + 1
+        return counts
+
+    # ---- combinator scopes ------------------------------------------------------
+
+    def control(self, *controls: Qubit) -> Any:
+        """Run a block of gates only where every control qubit is |1⟩.
+
+            with qc.control(c):
+                bell(a, b)
+
+        Every gate inside the body is recorded rather than run, then lifted to its
+        controlled form and executed on exit. Because the control may itself be in
+        superposition, the result is a superposition of *the block having run and not
+        having run* — not a coin flip deciding between them.
+
+        At simulator level there is no decomposition: "conditioned on all controls
+        being |1⟩" is just more sliced axes, however many controls there are. Real
+        hardware is not so lucky — a multiply-controlled gate must be built out of one-
+        and two-qubit gates, sometimes hundreds of them. The slice here is the
+        mathematical meaning those decompositions work to implement.
+        """
+        from qsim.combinators import ControlScope
+
+        return ControlScope(self, controls)
+
+    def adjoint(self) -> Any:
+        """Run a block of gates backwards.
+
+            with qc.adjoint():
+                H(a)
+                CNOT(a, b)
+
+        The body is recorded, then replayed in reverse with every gate replaced by its
+        inverse. Every gate has one, because every gate is unitary — see
+        ``Gate.adjoint``. Measurement does not, and attempting to measure inside this
+        scope raises.
+        """
+        from qsim.combinators import AdjointScope
+
+        return AdjointScope(self)
+
+    def ancilla(self, count: int = 1) -> Any:
+        """Borrow ``count`` scratch qubits, which must be given back clean.
+
+            with qc.ancilla(2) as scratch:
+                ...                      # use them
+                ...                      # then uncompute them back to |00⟩
+
+        On exit the scope **verifies numerically** that the scratch qubits are back in
+        |0…0⟩ and unentangled, and raises :class:`~qsim.errors.DirtyAncillaError` if
+        not. This check is the point of the whole construct, and it is a simulator
+        superpower: real hardware cannot look. It is also the mechanism by which this
+        library teaches uncomputation, so it is a hard requirement and not a debug
+        option you can switch off.
+
+        Note what is *not* offered: releasing a qubit by dropping its handle. Discarding
+        an entangled qubit is a partial trace — it silently turns a pure state into a
+        mixed one. There is no garbage collection for quantum memory; release requires
+        uncomputation. That is physics, not a missing feature.
+        """
+        from qsim.combinators import AncillaScope
+
+        return AncillaScope(self, count)
+
+    def _deallocate(self, qubits: Sequence[Qubit]) -> None:
+        """Remove verified-clean qubits from the state and renumber the surviving axes.
+
+        This is the axis-lifecycle problem of design doc §2.4 in action, and the reason
+        handles never store axis numbers.
+        """
+        axes = sorted(self._axis_of[q._id] for q in qubits)
+        # Take the slice where every released qubit reads 0. Because the caller has
+        # already verified they are exactly |0…0⟩, all the amplitude lives in this
+        # slice — so dropping the axes loses nothing and the norm is preserved.
+        selector: list[Any] = [slice(None)] * self._psi.ndim
+        for axis in axes:
+            selector[axis] = 0
+        self._psi = np.ascontiguousarray(self._psi[tuple(selector)])
+
+        for q in qubits:
+            del self._axis_of[q._id]
+            self._qubits.remove(q)
+            q._live = False
+
+        # Renumber: the survivors keep their relative order and close the gaps.
+        survivors = sorted(self._axis_of.items(), key=lambda item: item[1])
+        self._axis_of = {qubit_id: new_axis for new_axis, (qubit_id, _) in enumerate(survivors)}
 
     def depth(self) -> int:
         """Circuit depth: how many layers of simultaneous operations the program needs.
@@ -383,8 +495,8 @@ class Circuit:
             )
         return self._axis_of[q._id]
 
-    def _axes(self, qubits: Sequence[Qubit]) -> list[int]:
-        """Resolve several handles at once, rejecting repeats."""
+    def _validate(self, qubits: Sequence[Qubit]) -> None:
+        """Check handles are usable and distinct, without resolving them to axes."""
         for i, q in enumerate(qubits):
             for other in qubits[i + 1 :]:
                 if q is other:
@@ -396,10 +508,59 @@ class Circuit:
                         "theorem appearing at the API surface — the gate you want is "
                         "probably one acting on two different qubits."
                     )
-        return [self._axis(q) for q in qubits]
+        for q in qubits:
+            self._axis(q)  # raises for a foreign or released handle
 
     def _record(self, op: Op) -> None:
         self._history.append(op)
+
+    # ---- the emit / execute funnel ---------------------------------------------
+
+    def _emit(self, op: Op) -> None:
+        """Every gate arrives here. Run it now, or record it for a scope to transform."""
+        if self._record_stack:
+            self._record_stack[-1].append(op)
+        else:
+            self._execute(op)
+
+    def _execute(self, op: Op) -> None:
+        """Apply one recorded operation to the state, and add it to the history.
+
+        Axes are resolved *here*, not when the gate was called. That is the whole
+        reason ops carry qubit ids: a combinator scope may hold an op for a while, and
+        an ancilla scope may renumber every axis in between.
+        """
+        from qsim import state
+
+        gate = op.gate
+        data = gate._data_for(op.params)
+        # Match the circuit's precision. Without this, a complex128 gate matrix would
+        # silently promote a complex64 state back to double and quietly undo the
+        # single-precision experiment of design doc §9 (T17).
+        data = data.astype(self._psi.dtype, copy=False)
+
+        targets = [self._axis_of[i] for i in op.qubit_ids]
+        controls = [self._axis_of[i] for i in op.controls]
+
+        if controls:
+            if gate._kind == "diag":
+                self._psi = state.apply_controlled_diag(self._psi, data, controls, targets[0])
+            else:
+                self._psi = state.apply_controlled(self._psi, data, controls, targets)
+        elif gate._kind == "diag":
+            self._psi = state.apply_diag(self._psi, data, targets[0])
+        elif gate._kind == "unitary1":
+            self._psi = state.apply_1q(self._psi, data, targets[0])
+        else:
+            self._psi = state.apply_2q(self._psi, data, targets[0], targets[1])
+
+        self._history.append(op)
+
+    def _push_record(self) -> None:
+        self._record_stack.append([])
+
+    def _pop_record(self) -> list[Op]:
+        return self._record_stack.pop()
 
     def _repr_html_(self) -> str:
         # Jupyter calls this when a Circuit is the last expression in a cell.

@@ -108,9 +108,60 @@ Unit tests (`test_combinators.py`) for full coverage, written as documentation: 
 - The Phase 1 refactor to `_emit`/`_execute` introduced no behavior change (Phase 1 suite green without edits — any needed edit must be reported).
 - Report "Decisions made".
 
-## Interface decisions to review with the owner (before building)
+## Interface decisions — resolved
 
-1. `qsim.control(c)` / `qsim.adjoint()` module-level vs `qc.control(c)` / `qc.adjoint()` methods — show both in a usage example; how should `adjoint()` find its circuit?
-2. The `_unsafe_skip_check=True` semantics for T18 (garbage axes stay, handles die) — walk the owner through why in one paragraph.
-3. `block.controlled(c)(x, y)` call-shape — comfortable, or prefer `block.controlled(c, x, y)`?
-4. Whether `gate_counts()` should count inside blocks (recommended: yes, elementary gates) — confirm with an example output.
+**Phase 2 shipped; this is the record.** The owner pushed back on two of the four
+proposals, and the result is a smaller, more uniform API than this plan described.
+
+1. **All three scopes are `Circuit` methods**: `qc.control(*controls)`, `qc.adjoint()`,
+   `qc.ancilla(n)`. The module-level `qsim.control(...)` / `qsim.adjoint()` of design doc
+   §4.2 are **not built**. The owner's question — "why do we even have to do it with
+   `qsim.adjoint()`?" — was the right one: that spelling needs a module-level global only
+   because it was written argument-less, and `qc.ancilla(n)` was already a circuit method,
+   so making all three consistent removes the late-binding machinery entirely. No globals,
+   no first-gate-binds rule, and they tab-complete off `qc`.
+2. **`.adjoint()` is a method on gates as well as blocks**, so `Sdg`/`Tdg`/`SXdg` are
+   **not exported** — again the owner's suggestion ("why not `S.adjoint()`?"). One
+   vocabulary now covers every level: `S.adjoint()`, `bell.adjoint()`,
+   `with qc.adjoint():`, and likewise for `.controlled()`. The daggered gate objects still
+   exist internally and still display as `S†`, `T†`, `SX†` in history and diagrams.
+3. **No `_unsafe_skip_check`.** Plain `alloc_many()` already models abandoned garbage —
+   dropping a handle never frees a qubit — so T18 needs no special API, and `ancilla`
+   keeps exactly one meaning. The design doc calls the check "a hard requirement, not a
+   debug option"; a keyword that switches it off would have contradicted that.
+4. **`gate_counts()` counts elementary gates; `block_counts()` counts block calls.** The
+   two questions are different ("what does this cost" vs "what is this made of") and
+   answering either with the other misleads. `Op` gained a `block` tag so the history
+   stays a flat list while Phase 6's diagrams can still recover the grouping.
+5. **`block.controlled(c)(x, y)`** call shape as the design doc has it — settled without
+   discussion, since it mirrors `with qc.control(c):`.
+
+## Deviations from this plan (as built)
+
+- **Ancilla scopes may not be opened inside a recording scope** (a block, `control`, or
+  `adjoint`). Found by the notebook agent, which hit a bare `KeyError`. The cause is real
+  rather than a typo: a recording scope has not run its body yet, so at ancilla-exit there
+  is nothing to verify, and deallocating would remove ids that queued ops still reference.
+  It now raises a `QsimError` explaining this and pointing at the fix — allocate outside
+  and pass the register in, which is what design doc §4.3's own example does and which
+  makes a block's qubit requirements visible in its signature. **Phase 4 should confirm
+  this is enough for the arithmetic blocks**; if they genuinely need to borrow scratch
+  internally, ancilla allocation will have to become a recordable op.
+- **`Op` carries the gate object** (`gate=`, excluded from equality and repr) rather than
+  execution looking the name up in a registry. Ad-hoc gates from `.controlled()` are not in
+  `GATES`, so a name lookup would fail for them.
+- **A failed cleanliness check leaves the ancilla handles alive** and their axes in place,
+  so a caller catching `DirtyAncillaError` can inspect the mess — which notebook 04 does.
+  The exception-inside-the-body path differs deliberately: there the handles are retired
+  but the axes are still left alone, because the state may be entangled and slicing it away
+  would corrupt what remains while hiding the user's real error.
+- **`Circuit._axes` was deleted**, replaced by `_validate` — gates no longer resolve axes
+  at call time, since a recorded op may not execute until much later.
+- Gate inverses are built **lazily and cached mutually**, which is what stops a
+  controlled-S from recursing forever while constructing the controlled-S† that would in
+  turn need a controlled-S.
+- `Rz.adjoint()` is the same gate with its angle sign flipped, so the *recorded* angle is
+  the one actually applied: history reads `Rz(theta=-0.3)` rather than `+0.3` with a hidden
+  minus sign.
+- **The Phase 1 refactor to `_emit`/`_execute` needed no test edits**, as this plan
+  required — all 258 earlier tests passed untouched.
