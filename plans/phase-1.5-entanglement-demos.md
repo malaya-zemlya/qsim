@@ -94,8 +94,57 @@ Docstring: superdense coding is teleportation run backwards — teleportation sp
 - CHSH docstrings contain the game framing and the classical-bound algebra.
 - Report "Decisions made".
 
-## Interface decisions to review with the owner (before building)
+## Interface decisions — resolved
 
-1. The game-style API above (self-contained functions building their own circuits) vs. gate-style building blocks on a user circuit — show both call styles, confirm the former.
-2. `TeleportResult` fields — is this the trace-style result object the owner wants (it previews `ShorResult` in Phase 5)?
-3. Notebook 03's skeptic framing — one-paragraph sample for tone check.
+Presented as usage examples before any code was written. **Phase 1.5 shipped; this is the
+record, not a to-do list.**
+
+1. **Self-contained functions**, as proposed — each demo builds its own `Circuit` and runs
+   the whole experiment. *Why:* these are experiments to run and read, not parts to
+   compose, and nothing later in the build depends on them, so a block-style API would be
+   flexibility nobody spends. The cost is that the protocol becomes something you call
+   rather than something you write, so notebook 03 walks teleportation gate by gate on its
+   own circuit first and only then shows the packaged `teleport()`.
+2. **`TeleportResult` keeps the plan's four fields plus `source_bits`** — the no-cloning
+   fingerprint, showing Alice's qubits left holding two random classical bits and no trace
+   of the message. This sets the shape for `ShorResult` in Phase 5: a frozen dataclass of
+   named results, not a tuple.
+3. **Notebook 03's skeptic framing approved as sampled** — the pair-of-gloves image, giving
+   the local hidden-variable position a fair hearing before Bell's test refutes it. Written
+   verbatim into the notebook's opening.
+
+## Deviations from this plan (as built)
+
+- **`TeleportResult` has a sixth field, `source_bloch_z`.** TB2 requires numeric proof that
+  Alice's qubits end in a computational basis state, and the result object is the test's
+  only channel to the circuit. `source_bits` is derived from it (sign of z), so the claim
+  "the original is destroyed" is checked against the state rather than inferred from the
+  measurement outcomes.
+- **`classical_strategies()` added** alongside `classical_bound()`, returning all 16 rows as
+  `((A, A′, B, B′), S)`. Notebook 03 prints the exhaustive search rather than asserting its
+  result, which §8.6 of the design doc explicitly asks for.
+- **`chsh_sampled` samples via `inspect.sample()`** instead of rebuilding a circuit per shot.
+  The draws are statistically identical to repeated runs — `sample()` is non-collapsing and
+  draws independently from the same distribution — and it avoids building 400,000 circuits
+  for the 100k-shot acceptance test. The docstring says plainly that a real lab would have
+  to rebuild the pair for every shot.
+- **`chsh_sampled` derives its four per-setting seeds from one generator**, not `seed`,
+  `seed+1`, `seed+2`, `seed+3`. Consecutive seeds give correlated PCG64 streams; see
+  `tests/CLAUDE.md`. Caught in review of the first implementation, which had the bug.
+- **`CLASSICAL_LIMIT` and `QUANTUM_LIMIT` constants exported** so notebooks and tests stop
+  spelling `2.0` and `2*np.sqrt(2)` inline.
+- **`superdense_send` validates its input**, raising `ValueError` on anything that is not two
+  bits.
+- **Notebook 03 gained a section the plan did not have** — §5, "But what actually
+  travelled?" — added at the owner's request. It demonstrates no-signalling numerically
+  (Alice's reduced state is `I/2` whatever Bob does, and conditioning on his outcome *does*
+  change it while averaging over outcomes restores it), states Bell's **three** assumptions
+  rather than one, and treats the observer-centred / relative-state reading seriously: it
+  gives up "definite single outcomes", not locality, and survives Bell only if the
+  observer's post-measurement state is genuinely superposed rather than merely unknown. It
+  points forward to notebook 05, where decoherence builds exactly that mechanism.
+- **Notebook 02's forward pointer was wrong** — it named `03-chsh-and-friends.ipynb`, which
+  never existed. Corrected to the real filename.
+- Sign convention worth recording: measuring the observable cos θ·Z + sin θ·X is
+  `Ry(q, theta=-θ)` followed by a z-measurement. The minus sign is because rotating the
+  state by −θ is the same experiment as rotating the apparatus by +θ.
