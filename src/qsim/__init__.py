@@ -8,21 +8,97 @@ axis. Everything else in this package is built from that picture.
 
 Conceptual transparency beats speed here, always: this code is meant to be read.
 
-Phase 0 ships only the error types; the quantum machinery arrives in Phase 1.
+A first program::
+
+    import numpy as np
+    import qsim
+    from qsim import Circuit
+    from qsim.gates import H, CNOT
+
+    qc = Circuit(name="bell", seed=1234)
+    a, b = qc.alloc_many(2)
+    H(a)                       # a is now (|0> + |1>)/sqrt(2)
+    CNOT(a, b)                 # ... and now the pair is entangled
+    print(qc.inspect.ket())    # 0.707|00⟩ + 0.707|11⟩
+    print(qc.measure(a) == qc.measure(b))   # always True
+
+Where to look next: ``state.py`` for what a state *is*, ``circuit.py`` for who owns
+it, ``measure.py`` for the one irreversible operation, and ``inspector.py`` for
+everything a real quantum computer would never let you see. The notebooks in
+``notebooks/`` are the guided path through all of it.
 """
 
-from qsim import errors
+from qsim import errors, gates, viz
+from qsim.circuit import Circuit, Op, Qubit, Register
 from qsim.errors import (
     DeadQubitError,
     DirtyAncillaError,
     NoCloningError,
     QsimError,
 )
+from qsim.gates import (
+    CNOT,
+    CZ,
+    SWAP,
+    SX,
+    CPhase,
+    Fredkin,
+    Gate,
+    H,
+    ParametrizedGate,
+    Phase,
+    Rx,
+    Ry,
+    Rz,
+    S,
+    T,
+    Toffoli,
+    X,
+    Y,
+    Z,
+)
+from qsim.inspector import Bra, Inspector, Ket
+from qsim.state import get_dtype, set_dtype
 
 __all__ = [
+    # core objects
+    "Circuit",
+    "Op",
+    "Qubit",
+    "Register",
+    "Inspector",
+    "Ket",
+    "Bra",
+    # gates
+    "Gate",
+    "ParametrizedGate",
+    "H",
+    "X",
+    "Y",
+    "Z",
+    "S",
+    "T",
+    "SX",
+    "CNOT",
+    "CZ",
+    "SWAP",
+    "Toffoli",
+    "Fredkin",
+    "Rx",
+    "Ry",
+    "Rz",
+    "Phase",
+    "CPhase",
+    # errors
+    "QsimError",
+    "NoCloningError",
     "DeadQubitError",
     "DirtyAncillaError",
-    "NoCloningError",
-    "QsimError",
+    # precision
+    "set_dtype",
+    "get_dtype",
+    # submodules
     "errors",
+    "gates",
+    "viz",
 ]
