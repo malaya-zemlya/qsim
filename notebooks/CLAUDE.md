@@ -19,9 +19,10 @@ covers only the mechanics, which are easy to get wrong.
 - **Assign the figure**: `fig = viz.amplitudes(qc)`, not a bare `viz.amplitudes(qc)`.
   Every `viz` function returns its `Figure`, and a bare call renders twice — once from
   the inline backend and once as the cell result.
-- **Draw seeds from one master RNG**, not `range(n)`. Consecutive seeds give correlated
-  PCG64 streams; `Circuit(seed=s) for s in range(400)` produced a 2.4σ-biased coin.
-  Use `np.random.default_rng(0).integers(0, 2**32, size=n)`.
+- **Seeds from `range(n)` are fine** — NumPy's `SeedSequence` makes consecutive seeds give
+  independent streams (verified over 200,000 of them). But a demo whose *narrative* depends
+  on a particular outcome ("notice the count is near 500") should use enough samples that
+  the claim holds for any seed block, since 400 fair coin flips land anywhere in ~180–220.
 - Verify every prose claim by running the snippet first. If the library disagrees with
   the markdown, fix the markdown — or report a real library bug, never paper over one.
 

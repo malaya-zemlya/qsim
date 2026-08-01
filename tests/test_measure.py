@@ -21,19 +21,20 @@ def test_measuring_a_definite_state_returns_that_value(qc: Circuit) -> None:
 def test_measuring_a_superposition_gives_both_outcomes_at_the_expected_rate() -> None:
     """The Born rule in action: |amplitude|^2 is a frequency you can count.
 
-    Seeds are drawn from a master generator rather than being 0, 1, 2, ...:
-    consecutive seeds produce correlated PCG64 streams, and a run of them is
-    measurably biased even though each individual circuit is perfectly fair.
+    The bound is deliberately loose. 2000 fair coin flips have a standard deviation of
+    about 22, so 0.46-0.54 sits roughly 3.5 sigma out on either side: wide enough that
+    this passes for any seed, rather than only for the block of seeds it was written
+    against.
     """
-    seeds = np.random.default_rng(0).integers(0, 2**32, size=400)
+    trials = 2000
     ones = 0
-    for seed in seeds:
-        qc = Circuit(seed=int(seed))
+    for seed in range(trials):
+        qc = Circuit(seed=seed)
         a = qc.alloc()
         H(a)
         ones += qc.measure(a)
 
-    assert 0.44 < ones / 400 < 0.56
+    assert 0.46 < ones / trials < 0.54
 
 
 def test_measuring_the_same_qubit_twice_gives_the_same_answer(qc: Circuit) -> None:
@@ -205,14 +206,14 @@ def test_measurement_probabilities_match_the_amplitudes_they_came_from() -> None
     """Statistical check that collapse samples the Born distribution, not something near it."""
     from qsim.gates import Ry
 
-    trials = 600
-    seeds = np.random.default_rng(1).integers(0, 2**32, size=trials)
+    trials = 2000
     counts = 0
-    for seed in seeds:
-        qc = Circuit(seed=int(seed))
+    for seed in range(trials):
+        qc = Circuit(seed=seed)
         a = qc.alloc()
         # sin^2(pi/8) ~= 0.146 chance of reading 1.
         Ry(a, theta=np.pi / 4)
         counts += qc.measure(a)
 
-    assert counts / trials == pytest.approx(np.sin(np.pi / 8) ** 2, abs=0.05)
+    # sd of the proportion is sqrt(p(1-p)/n) ~= 0.0079, so 0.03 is nearly 4 sigma.
+    assert counts / trials == pytest.approx(np.sin(np.pi / 8) ** 2, abs=0.03)

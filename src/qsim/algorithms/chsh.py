@@ -155,11 +155,10 @@ def chsh_sampled(
     a pile of ±1 answers, and the violation has to be visible through the noise.
     """
     a, a_prime, b, b_prime = settings
-    # The four settings are four separate experiments and need four independent random
-    # streams. Note what is *not* done here: seed, seed+1, seed+2, seed+3. Consecutive
-    # seeds produce correlated streams, so the four estimates would share structure and
-    # their errors would stop being independent. Drawing the four seeds from one
-    # generator gives genuinely unrelated runs.
+    # The four settings are four separate experiments, so they get four separate streams.
+    # Drawing the seeds from one generator says that more plainly than seed, seed+1,
+    # seed+2, seed+3 would -- though either is sound: NumPy runs a seed through
+    # SeedSequence precisely so that neighbouring seeds still give independent streams.
     if seed is None:
         seeds: list[int | None] = [None, None, None, None]
     else:

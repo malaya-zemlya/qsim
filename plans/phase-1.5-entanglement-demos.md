@@ -129,8 +129,11 @@ record, not a to-do list.**
   for the 100k-shot acceptance test. The docstring says plainly that a real lab would have
   to rebuild the pair for every shot.
 - **`chsh_sampled` derives its four per-setting seeds from one generator**, not `seed`,
-  `seed+1`, `seed+2`, `seed+3`. Consecutive seeds give correlated PCG64 streams; see
-  `tests/CLAUDE.md`. Caught in review of the first implementation, which had the bug.
+  `seed+1`, `seed+2`, `seed+3`. *Note added in Phase 2:* the original justification for this
+  — that consecutive seeds give correlated streams — turned out to be **false** (see the
+  correction in `plans/phase-1-core.md`). The code is kept because deriving four seeds from
+  one generator states "four independent experiments" more clearly than arithmetic on a
+  seed does, not because the arithmetic was unsafe.
 - **`CLASSICAL_LIMIT` and `QUANTUM_LIMIT` constants exported** so notebooks and tests stop
   spelling `2.0` and `2*np.sqrt(2)` inline.
 - **`superdense_send` validates its input**, raising `ValueError` on anything that is not two

@@ -317,6 +317,11 @@ Two additions the owner asked for while the phase was in flight:
   top-level import is circular.
 - **`tests/test_viz.py` was added**, absent from this plan's file list but required by the
   100%-coverage rule.
-- **A note for future test authors:** consecutive seeds produce correlated PCG64 streams.
-  `Circuit(seed=s) for s in range(400)` gave a 2.4σ-biased coin. Statistical tests draw their
-  seeds from a master generator instead.
+- **A note for future test authors, corrected during Phase 2.** This originally read
+  "consecutive seeds produce correlated PCG64 streams", on the strength of one 2.4σ
+  observation. That claim is **false**: NumPy's `SeedSequence` is built so small consecutive
+  seeds give independent streams, and measuring 200,000 of them gives z = +0.99 with
+  χ² = 10.1 on 9 dof. Repeating the original measurement across 40 blocks gave sd(z) = 1.03
+  and |z| > 2 in 2 of 40 — an unbiased generator. The real lesson is the one that actually
+  bit: **do not tighten a statistical bound around the seed block you happened to run.**
+  400 fair coin flips land anywhere in ~180–220, and `range(400)` gives 176.

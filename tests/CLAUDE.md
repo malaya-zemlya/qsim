@@ -5,11 +5,23 @@ covers the local specifics.
 
 ## Randomness
 
-**Draw seeds from one master RNG, never from `range(n)`.** Consecutive seeds produce
-correlated PCG64 streams: `Circuit(seed=s) for s in range(400)` gave a 2.4σ-biased coin
-on a fair measurement. Use `np.random.default_rng(0).integers(0, 2**32, size=n)` and pass
-each as `Circuit(seed=int(s))`. This will matter again for CHSH sampling (Phase 1.5) and
-Shor (Phase 5).
+**`for s in range(n)` is fine as a source of seeds.** `np.random.default_rng(s)` puts the
+seed through NumPy's `SeedSequence`, which is *designed* so that small consecutive seeds
+give independent streams. Measured here over 200,000 sequential seeds: z = +0.99 on a
+fair-coin count, χ² = 10.1 on 9 degrees of freedom (critical value 16.9). There is no
+correlation to design around.
+
+**What does bite is tightening a statistical bound around the block of seeds you happened
+to run.** 400 sequential seeds give a fair-coin count anywhere in roughly 180–220, and
+`range(400)` lands on 176 — outside 2σ, purely by chance. So give statistical assertions
+real headroom, or use enough samples that the bound is many sigma away. A test that only
+passes for one lucky block of seeds is a test that will fail on someone else's machine
+the first time the sequence changes.
+
+(An earlier version of this file claimed consecutive seeds were correlated, on the
+strength of a single 2.4σ observation. Repeating that measurement across 40 blocks gave a
+spread of z with sd 1.03 and |z| > 2 in 2 of 40 blocks — exactly what an unbiased
+generator does. The claim was wrong.)
 
 Note also that `inspect.sample()` draws from a separate stream (`Circuit._sample_rng`), so
 it deliberately does *not* disturb a seeded sequence of `measure()` calls.

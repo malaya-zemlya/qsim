@@ -149,7 +149,13 @@ _UNITARY2 = "unitary2"
 
 
 class _GateBase:
-    """Shared machinery: validation, application, and history recording."""
+    """Shared machinery: validation, recording, and the two universal combinators.
+
+    Every gate can be **inverted** (``gate.adjoint()``) and **controlled**
+    (``gate.controlled()``), and both return another gate — so they compose:
+    ``T.adjoint().controlled()`` is a perfectly good controlled-T†. Blocks
+    (``@qsim.gate``) offer the same two methods, so one vocabulary covers both.
+    """
 
     def __init__(
         self, name: str, kind: str, n_controls: int, n_targets: int, full_name: str = ""
