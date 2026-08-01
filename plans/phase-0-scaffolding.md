@@ -147,3 +147,13 @@ uv run python -c "import matplotlib; import ipywidgets"
 ## Interface decisions to review with the owner (before building)
 
 None — this phase has no public API. Proceed directly after the owner has seen this plan.
+
+## As built
+
+Shipped as specified. Two small decisions the plan did not cover:
+
+- **`.gitignore` gained `.coverage`, `.pytest_cache/`, `.ruff_cache/`, `.ipynb_checkpoints/`**
+  (and later `.DS_Store`) — the pytest config writes a coverage file on every run.
+- **Committed on `master`.** The repo had zero commits, so this is the initial commit and
+  there was no default branch to protect. `master` is also the default branch on the GitHub
+  remote (`git@github.com:malaya-zemlya/qsim.git`), added after Phase 1.

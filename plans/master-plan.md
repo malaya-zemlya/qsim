@@ -29,7 +29,7 @@ Phases 7 (quantum trajectories, error correction, quantum Darwinism, Trotterized
 
 ## Per-phase workflow
 
-Every phase follows the same five steps:
+Every phase follows the same six steps:
 
 1. **Interface review (with the project owner, before any code).** Claude presents the phase's concrete public interface as *short usage examples* — "here is what your code will look like" — not as abstract signatures. The owner approves or adjusts. Each phase plan has an "Interface decisions to review" section listing exactly what to present. Nothing in a phase's public API is built before this review.
 2. **Build.** A subagent executes the phase plan. The subagent must be given: the phase plan file, `qsim-design.md`, and this file's Conventions section (or this whole file). Subagents implement code + tests + notebook together, not code first and tests as an afterthought — the tests in each plan are the specification.
@@ -38,7 +38,8 @@ Every phase follows the same five steps:
    - `uv run pyright` — zero errors.
    - `uv run jupyter execute notebooks/<this phase's notebooks>` — executes top to bottom without error. (If `jupyter execute` is unavailable, `uv run jupyter nbconvert --to notebook --execute --stdout <nb> > /dev/null` is the fallback.)
 4. **Review.** Claude reads the diff and checks it against the phase plan's "Definition of done" and the design doc's constraints (especially: no 2^n×2^n matrices in the library, teaching-quality error messages, pedagogical comments present).
-5. **Commit.** One commit per phase (plus fixups), message `Phase N: <summary>`.
+5. **Record.** Claude folds the phase's outcome back into its plan file, turning "Interface decisions to review" into "Interface decisions **resolved**" — each with the answer the owner gave and the one-line reason — and adding a "Deviations from this plan" section for anything built differently from what the plan specified. **The plans are this project's documentation**: they are what says *why* a decision went the way it did, which the code cannot carry and a commit message buries. A plan left in the future tense after its phase has shipped is a plan that lies to the next reader.
+6. **Commit.** One commit per phase (plus fixups), message `Phase N: <summary>`. The plan updates from step 5 go in the same commit.
 
 ## Conventions (binding on every subagent)
 

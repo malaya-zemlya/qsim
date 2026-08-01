@@ -243,10 +243,80 @@ Both notebooks follow the master-plan pedagogy rules (≈60% markdown, concept-b
 - Module docstrings state their physical fact; error messages teach; numpy comments per master plan.
 - Report lists any "Decisions made".
 
-## Interface decisions to review with the owner (Claude presents these BEFORE building)
+## Interface decisions — resolved
 
-1. Gate call style confirmation with real examples (`H(a)`, `Rz(a, theta=np.pi/4)` — keyword-only `theta`?).
-2. `Circuit(2)` vs `Circuit()` + `alloc_many(2)` in examples/notebooks — which is the taught default?
-3. `ket()` output formatting (decimals vs unicode √ forms; how many terms before truncation).
-4. `_repr_html_` mock-up (a rendered sample) and `viz.amplitudes` sample figure — do the visuals read well to the owner?
-5. `measure_all` bit order sanity-check with a concrete example (reg[0] is MSB: measuring |10⟩ returns 2, not 1).
+Presented to the owner as usage examples before any code was written, and settled as
+follows. **Phase 1 shipped; this section is the record, not a to-do list.**
+
+1. **Gate call style — keyword-only angles.** `H(a)`, `CNOT(a, b)`, `Rz(a, theta=np.pi/4)`.
+   *Why:* every positional argument to a gate is a qubit, so a bare float in that position
+   is the one thing a reader has to stop and decode — and `CPhase(a, b, theta=…)` would
+   otherwise look like it takes a third qubit. Gates stay module-level callables that find
+   their circuit from the handles; there is no `qc.h(a)` method form.
+2. **`alloc_many` is the taught default**, with a new `qc.qubits -> Register` accessor added.
+   *Why:* the one idea notebook 01 must land is that a `Qubit` is a handle the circuit hands
+   you, and `alloc_many` shows that happening where `Circuit(2)` makes handles appear from
+   nowhere. `Circuit(n)` still works — and needed `qc.qubits`, since this plan specified the
+   pre-allocating constructor without saying how to reach what it allocated.
+3. **`ket()` prints plain decimals**, three places, eight terms, largest magnitude first,
+   complex amplitudes parenthesized, truncation announced as `… (N more terms)`.
+   *Why:* recognizing exact surds works beautifully for the handful of textbook states and
+   then silently stops the moment you apply a `T` gate — exactly when a learner most needs to
+   trust the output. A format that always means the same thing beats one that is occasionally
+   prettier.
+4. **Visuals approved as rendered**: the vivid cyclic `hsv` wheel for phase-as-hue, in
+   `viz.amplitudes`, in the Bloch plot, and in `Circuit._repr_html_`. The alternative
+   considered was `twilight` (calmer, friendlier to red-green colour vision deficiency, but
+   adjacent phases are harder to tell apart). The HTML repr uses `currentColor` and no
+   background, so it reads correctly in both light and dark Jupyter themes.
+5. **Bit order confirmed**: `reg[0]` is the most significant bit. A two-qubit register in
+   |10⟩ measures as 2, not 1, and sits at flat index 2 of `state_vector()`.
+
+Two additions the owner asked for while the phase was in flight:
+
+6. **`inspect.bra()` and `inspect.overlap(other)`.** `bra()` is display-only and exists for
+   one reason: printing it next to its ket makes conjugation *visible* (every `+0.354i`
+   becomes `-0.354i`), which is what notebook 01 needs when it introduces ⟨ψ|. `overlap`
+   returns the raw complex ⟨other|ψ⟩ — `fidelity` squares the phase away, and the phase is
+   exactly what decides how two states add when they interfere.
+7. **Every gate has a spelled-out name**, the same object under a longer alias:
+   `Hadamard is H`, `PauliX`, `PauliY`, `PauliZ`, `SqrtX`, `Swap`, `ControlledNot`,
+   `ControlledZ`, `ControlledControlledNot`, `ControlledSwap`, `RotationX/Y/Z`,
+   `ControlledPhase`. `gate.name` stays the short symbol — it is what the history,
+   `gate_counts()` and future diagrams use — and `gate.full_name` is the long one;
+   `gate.label` combines them for errors and reprs. S and T have no settled name in the
+   literature ("the phase gate" being already taken here by the parametrized `Phase`), so
+   they are named for what they do: **`S = SqrtZ`** and **`T = FourthRootZ`**.
+
+## Deviations from this plan (as built)
+
+- **`Qubit.__slots__` stores `_id`, not `_axis`.** Design doc §2.2 lists `_axis` in the slots
+  while §2.4 requires handles to hold stable ids; the id wins, per §2.4 and this plan's §2.
+- **Acceptance tests pass qubit handles, not axis indices.** Design doc §9's T2 snippet writes
+  `entanglement_entropy([0])`; the tests use `[a]`. Same physical content, and axis numbers
+  never appear in user code.
+- **No `n = 0 → 1` special case on allocation.** `zero_state(0)` returns a shape-`()` array
+  holding the number 1 — honest (zero qubits span a 1-dimensional space) and it makes
+  allocation a single uniform code path, since tensoring |0⟩ onto it yields the 1-qubit state.
+- **`apply_controlled_diag` is a separate kernel** from `apply_controlled`, rather than a flag
+  on one function.
+- **`Op` gained a `result: int | None` field** so measurement outcomes are recorded honestly
+  instead of being cast into the float `params` tuple.
+- **Gate inversion is `gate.adjoint_op(op) -> Op` plus a `GATES` name registry**, rather than a
+  bare `inverse` property — that is the shape Phase 2's `adjoint` actually needs. Private
+  `S†`, `T†`, `SX†` gates exist for the three gates that are not their own inverse.
+- **`inspect.sample()` draws from a second RNG** (`Circuit._sample_rng`), not the measurement
+  stream. Sampling is a simulator cheat, not a physical measurement, so adding a `sample()`
+  call to a seeded notebook must not silently rewrite every measurement below it.
+- **`entanglement_entropy` adds `+ 0.0`** so a product state reports `0.0` rather than `-0.0`
+  (`-1 × log(1)` is negative zero, which would print as "-0.000 bits").
+- **`viz.amplitudes` refuses above 6 qubits**, pointing at `viz.probabilities(qc, top=…)`;
+  128 bars is not a readable chart.
+- **`circuit.py` imports `measure`, `gates` and `inspector` inside methods.** The dependency
+  genuinely runs that way — those modules build on the types defined in `circuit.py` — so a
+  top-level import is circular.
+- **`tests/test_viz.py` was added**, absent from this plan's file list but required by the
+  100%-coverage rule.
+- **A note for future test authors:** consecutive seeds produce correlated PCG64 streams.
+  `Circuit(seed=s) for s in range(400)` gave a 2.4σ-biased coin. Statistical tests draw their
+  seeds from a master generator instead.
