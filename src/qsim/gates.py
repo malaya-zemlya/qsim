@@ -18,6 +18,21 @@ form to keep in sync. Angles are keyword-only: every positional argument to a ga
 a qubit, so a bare number in that position would be the one thing a reader has to
 stop and decode.
 
+Every gate has two names
+------------------------
+The one-letter symbols are what the literature, the circuit diagrams and the recorded
+history all use, but they are opaque until you have memorized them. So each gate is
+also importable under its spelled-out name, and the two are the *same object*::
+
+    Hadamard is H          # True
+    PauliX is X            # True
+    ControlledNot is CNOT  # True
+
+Use whichever reads better on a given line; mixing them is fine. ``gate.name`` is the
+short symbol and ``gate.full_name`` the long one. S and T are the two gates with no
+settled name in the literature, so qsim names them for what they do: ``S = SqrtZ``
+(S squared is Z) and ``T = FourthRootZ`` (T to the fourth is Z).
+
 Two families, and why the distinction is structural
 ----------------------------------------------------
 Some gates are **diagonal** in the computational basis (Z, S, T, Rz, Phase, CZ,
@@ -136,11 +151,23 @@ _UNITARY2 = "unitary2"
 class _GateBase:
     """Shared machinery: validation, application, and history recording."""
 
-    def __init__(self, name: str, kind: str, n_controls: int, n_targets: int) -> None:
+    def __init__(
+        self, name: str, kind: str, n_controls: int, n_targets: int, full_name: str = ""
+    ) -> None:
+        #: The short symbol. This is what appears in the history, in ``gate_counts()``
+        #: and on circuit diagrams, where a long name would not fit.
         self.name = name
+        #: The spelled-out name. Every gate is also importable under this name, so
+        #: ``Hadamard`` and ``H`` are the same object.
+        self.full_name = full_name or name
         self._kind = kind
         self.n_controls = n_controls
         self.n_targets = n_targets
+
+    @property
+    def label(self) -> str:
+        """Both names together, for error messages: ``"H (Hadamard)"``."""
+        return self.name if self.full_name == self.name else f"{self.name} ({self.full_name})"
 
     @property
     def n_qubits(self) -> int:
@@ -152,7 +179,7 @@ class _GateBase:
     ) -> None:
         if len(qubits) != self.n_qubits:
             raise QsimError(
-                f"{self.name} acts on {self.n_qubits} qubit(s) "
+                f"{self.label} acts on {self.n_qubits} qubit(s) "
                 f"({self.n_controls} control(s) and {self.n_targets} target(s)), "
                 f"but got {len(qubits)}."
             )
@@ -192,7 +219,7 @@ class _GateBase:
         )
 
     def __repr__(self) -> str:
-        return f"<Gate {self.name} on {self.n_qubits} qubit(s)>"
+        return f"<Gate {self.label} on {self.n_qubits} qubit(s)>"
 
 
 class Gate(_GateBase):
@@ -207,8 +234,9 @@ class Gate(_GateBase):
         n_controls: int = 0,
         n_targets: int = 1,
         inverse_name: str = "",
+        full_name: str = "",
     ) -> None:
-        super().__init__(name, kind, n_controls, n_targets)
+        super().__init__(name, kind, n_controls, n_targets, full_name)
         self._data = data
         # Most fixed gates are their own inverse (applying X twice does nothing).
         # S, T and SX are the exceptions and name their daggered partner.
@@ -217,7 +245,7 @@ class Gate(_GateBase):
     def __call__(self, *qubits: Qubit) -> None:
         self._apply(qubits, self._data, ())
 
-    def controlled(self, n: int = 1, *, name: str = "") -> Gate:
+    def controlled(self, n: int = 1, *, name: str = "", full_name: str = "") -> Gate:
         """A version of this gate that only fires when ``n`` further qubits are all 1.
 
         The controls come first in the argument list. Nothing about the underlying
@@ -231,6 +259,7 @@ class Gate(_GateBase):
             n_controls=self.n_controls + n,
             n_targets=self.n_targets,
             inverse_name="",
+            full_name=full_name or "Controlled" * n + self.full_name,
         )
 
     def adjoint_op(self, op: Op) -> Op:
@@ -257,14 +286,17 @@ class ParametrizedGate(_GateBase):
         *,
         n_controls: int = 0,
         n_targets: int = 1,
+        full_name: str = "",
     ) -> None:
-        super().__init__(name, kind, n_controls, n_targets)
+        super().__init__(name, kind, n_controls, n_targets, full_name)
         self._data_fn = data_fn
 
     def __call__(self, *qubits: Qubit, theta: float) -> None:
         self._apply(qubits, self._data_fn(theta), (theta,))
 
-    def controlled(self, n: int = 1, *, name: str = "") -> ParametrizedGate:
+    def controlled(
+        self, n: int = 1, *, name: str = "", full_name: str = ""
+    ) -> ParametrizedGate:
         """A version of this gate that only fires when ``n`` further qubits are all 1."""
         return ParametrizedGate(
             name or "C" * n + self.name,
@@ -272,6 +304,7 @@ class ParametrizedGate(_GateBase):
             self._data_fn,
             n_controls=self.n_controls + n,
             n_targets=self.n_targets,
+            full_name=full_name or "Controlled" * n + self.full_name,
         )
 
     def adjoint_op(self, op: Op) -> Op:
@@ -292,77 +325,81 @@ class ParametrizedGate(_GateBase):
 # The public gate set
 # ---------------------------------------------------------------------------
 
-H = Gate("H", _UNITARY1, _H_MATRIX)
+H = Gate("H", _UNITARY1, _H_MATRIX, full_name="Hadamard")
 """Hadamard: takes |0> to the equal superposition (|0> + |1>)/sqrt(2), and |1> to
 (|0> - |1>)/sqrt(2). It is how "both at once" enters a computation — and, applied a
 second time, how the two paths are brought back together to interfere."""
 
-X = Gate("X", _UNITARY1, _X_MATRIX)
-"""The bit flip: swaps |0> and |1>. The quantum NOT gate, and a 180-degree rotation
-about the x-axis of the Bloch sphere."""
+X = Gate("X", _UNITARY1, _X_MATRIX, full_name="PauliX")
+"""Pauli-X, the bit flip: swaps |0> and |1>. The quantum NOT gate, and a 180-degree
+rotation about the x-axis of the Bloch sphere."""
 
-Y = Gate("Y", _UNITARY1, _Y_MATRIX)
-"""A bit flip and a phase flip at once (Y = iXZ); a 180-degree rotation about y."""
+Y = Gate("Y", _UNITARY1, _Y_MATRIX, full_name="PauliY")
+"""Pauli-Y: a bit flip and a phase flip at once (Y = iXZ); a 180-degree rotation
+about the y-axis."""
 
-Z = Gate("Z", _DIAG, _Z_PHASES)
-"""The phase flip: leaves |0> alone and negates |1>. It does nothing observable to a
-qubit in |0> or |1>, and turns |+> into |-> — invisible to measurement until
-something interferes with it."""
+Z = Gate("Z", _DIAG, _Z_PHASES, full_name="PauliZ")
+"""Pauli-Z, the phase flip: leaves |0> alone and negates |1>. It does nothing
+observable to a qubit in |0> or |1>, and turns |+> into |-> — invisible to
+measurement until something interferes with it."""
 
-S = Gate("S", _DIAG, _S_PHASES, inverse_name="S†")
+S = Gate("S", _DIAG, _S_PHASES, inverse_name="S†", full_name="SqrtZ")
 """A quarter turn about the z-axis: multiplies the |1> amplitude by i. S applied
-twice is Z."""
+twice is Z, which is why its full name is ``SqrtZ``. (It is often called "the phase
+gate" in the literature; that name is taken here by the parametrized ``Phase``.)"""
 
-_S_DAGGER = Gate("S†", _DIAG, _S_DAGGER_PHASES, inverse_name="S")
+_S_DAGGER = Gate("S†", _DIAG, _S_DAGGER_PHASES, inverse_name="S", full_name="SqrtZDagger")
 
-T = Gate("T", _DIAG, _T_PHASES, inverse_name="T†")
-"""An eighth turn about z: multiplies the |1> amplitude by e^{i pi/4}. T is the
-non-Clifford ingredient — the one that makes quantum circuits hard to simulate
-classically. Circuits built only from H, S and CNOT can be simulated efficiently on
-an ordinary computer; adding T destroys that."""
+T = Gate("T", _DIAG, _T_PHASES, inverse_name="T†", full_name="FourthRootZ")
+"""An eighth turn about z: multiplies the |1> amplitude by e^{i pi/4}. Applied four
+times it is Z, hence ``FourthRootZ``; applied twice it is S.
 
-_T_DAGGER = Gate("T†", _DIAG, _T_DAGGER_PHASES, inverse_name="T")
+T is the non-Clifford ingredient — the one that makes quantum circuits hard to
+simulate classically. Circuits built only from H, S and CNOT can be simulated
+efficiently on an ordinary computer; adding T destroys that."""
 
-SX = Gate("SX", _UNITARY1, _SX_MATRIX, inverse_name="SX†")
+_T_DAGGER = Gate("T†", _DIAG, _T_DAGGER_PHASES, inverse_name="T", full_name="FourthRootZDagger")
+
+SX = Gate("SX", _UNITARY1, _SX_MATRIX, inverse_name="SX†", full_name="SqrtX")
 """The square root of X: applied twice, it is a bit flip. There is no such thing as
 "half of a classical NOT", which is a compact illustration that the space of quantum
 operations is bigger than the classical one."""
 
-_SX_DAGGER = Gate("SX†", _UNITARY1, _SX_DAGGER_MATRIX, inverse_name="SX")
+_SX_DAGGER = Gate("SX†", _UNITARY1, _SX_DAGGER_MATRIX, inverse_name="SX", full_name="SqrtXDagger")
 
-SWAP = Gate("SWAP", _UNITARY2, _SWAP_TENSOR, n_targets=2)
+SWAP = Gate("SWAP", _UNITARY2, _SWAP_TENSOR, n_targets=2, full_name="Swap")
 """Exchanges two qubits. Equal to three alternating CNOTs — CNOT(a,b), CNOT(b,a),
 CNOT(a,b) — which notebook 01 checks by hand. Here it is applied as one two-qubit
 tensor instead, so that ``apply_2q`` has a user."""
 
-CNOT = X.controlled(name="CNOT")
+CNOT = X.controlled(name="CNOT", full_name="ControlledNot")
 """Flips the target if the control is 1. The workhorse entangling gate: applied to
 (|0> + |1>)/sqrt(2) on the control it produces a Bell pair, a state that cannot be
 written as one qubit's state times another's."""
 
-CZ = Z.controlled(name="CZ")
+CZ = Z.controlled(name="CZ", full_name="ControlledZ")
 """Negates only the |11> amplitude. Note it is symmetric: "apply Z to b if a is 1" and
 "apply Z to a if b is 1" are the same operation, so for this gate the labels
 "control" and "target" are ours, not nature's."""
 
-Toffoli = X.controlled(2, name="Toffoli")
+Toffoli = X.controlled(2, name="Toffoli", full_name="ControlledControlledNot")
 """Flips the target if *both* controls are 1 — the reversible AND. Classical
 computation embeds into quantum computation through this gate, which is why Phase 4
 can build adders out of it."""
 
-Fredkin = SWAP.controlled(name="Fredkin")
+Fredkin = SWAP.controlled(name="Fredkin", full_name="ControlledSwap")
 """Swaps two targets if the control is 1 — the controlled-SWAP, and the other
 classical-universal reversible gate."""
 
-Rx = ParametrizedGate("Rx", _UNITARY1, _rx_matrix)
+Rx = ParametrizedGate("Rx", _UNITARY1, _rx_matrix, full_name="RotationX")
 """Rotate the Bloch vector by ``theta`` about the x-axis: ``Rx(q, theta=np.pi)`` is X
 up to an overall phase."""
 
-Ry = ParametrizedGate("Ry", _UNITARY1, _ry_matrix)
+Ry = ParametrizedGate("Ry", _UNITARY1, _ry_matrix, full_name="RotationY")
 """Rotate by ``theta`` about the y-axis. The rotation with real matrix entries, so it
 moves amplitude between |0> and |1> without introducing complex phases."""
 
-Rz = ParametrizedGate("Rz", _DIAG, _rz_phases)
+Rz = ParametrizedGate("Rz", _DIAG, _rz_phases, full_name="RotationZ")
 """Rotate by ``theta`` about the z-axis. Being diagonal, it cannot change any
 measurement probability in the computational basis — only phases."""
 
@@ -371,12 +408,40 @@ Phase = ParametrizedGate("Phase", _DIAG, _phase_phases)
 effect as Rz up to an overall phase, but with the convention that |0> is the one
 left alone."""
 
-CPhase = Phase.controlled(name="CPhase")
+CPhase = Phase.controlled(name="CPhase", full_name="ControlledPhase")
 """Multiply only the |11> amplitude by e^{i theta}. The engine of the QFT (Phase 3),
 where the angles are the binary place values of a number."""
 
 
+# ---------------------------------------------------------------------------
+# Spelled-out aliases
+#
+# Each of these is the *same object* as its short form: ``Hadamard is H``. The
+# short symbols are what the literature and circuit diagrams use, and what the
+# recorded history stores; the long names are for code that would rather be read
+# than decoded. Use whichever makes a given line clearer — mixing them is fine.
+# ---------------------------------------------------------------------------
+
+Hadamard = H
+PauliX = X
+PauliY = Y
+PauliZ = Z
+SqrtZ = S
+FourthRootZ = T
+SqrtX = SX
+Swap = SWAP
+ControlledNot = CNOT
+ControlledZ = CZ
+ControlledControlledNot = Toffoli
+ControlledSwap = Fredkin
+RotationX = Rx
+RotationY = Ry
+RotationZ = Rz
+ControlledPhase = CPhase
+
+
 #: Every gate by name, so recorded history can be replayed (Phase 2's combinators).
+#: Keyed by the short symbol — the same string that appears in ``Op.name``.
 GATES: dict[str, _GateBase] = {
     g.name: g
     for g in (

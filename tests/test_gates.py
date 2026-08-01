@@ -329,7 +329,70 @@ def test_giving_a_gate_the_wrong_number_of_qubits_raises(qc: Circuit) -> None:
 
 
 def test_gate_repr_names_it_and_its_arity() -> None:
-    assert repr(CNOT) == "<Gate CNOT on 2 qubit(s)>"
+    assert repr(CNOT) == "<Gate CNOT (ControlledNot) on 2 qubit(s)>"
+
+
+# ---- the two names every gate has --------------------------------------------
+
+
+def test_every_gate_is_importable_under_its_spelled_out_name() -> None:
+    """The long name is the *same object*, not a copy — so history, counts and
+    diagrams are unaffected by which one you type."""
+    from qsim import gates
+
+    pairs = [
+        ("Hadamard", H), ("PauliX", X), ("PauliY", Y), ("PauliZ", Z),
+        ("SqrtZ", S), ("FourthRootZ", T), ("SqrtX", SX), ("Swap", SWAP),
+        ("ControlledNot", CNOT), ("ControlledZ", CZ),
+        ("ControlledControlledNot", Toffoli), ("ControlledSwap", Fredkin),
+        ("RotationX", Rx), ("RotationY", Ry), ("RotationZ", Rz),
+        ("ControlledPhase", CPhase),
+    ]
+    for long_name, gate in pairs:
+        assert getattr(gates, long_name) is gate
+        assert gate.full_name == long_name
+
+
+def test_a_gate_knows_both_of_its_names() -> None:
+    assert H.name == "H"
+    assert H.full_name == "Hadamard"
+    assert H.label == "H (Hadamard)"
+
+
+def test_a_gate_with_only_one_name_does_not_repeat_it() -> None:
+    """Phase is already spelled out, so it has nothing to add in parentheses."""
+    assert Phase.full_name == "Phase"
+    assert Phase.label == "Phase"
+
+
+def test_the_long_names_can_be_imported_from_the_package_root() -> None:
+    import qsim
+
+    assert qsim.Hadamard is qsim.H
+    assert qsim.ControlledNot is qsim.CNOT
+
+
+def test_using_the_long_name_records_the_short_one(qc: Circuit) -> None:
+    """Circuit diagrams and gate counts stay compact whichever name you type."""
+    from qsim.gates import ControlledNot, Hadamard
+
+    a, b = qc.alloc_many(2)
+    Hadamard(a)
+    ControlledNot(a, b)
+
+    assert qc.gate_counts() == {"H": 1, "CNOT": 1}
+
+
+def test_controlling_a_gate_spells_out_the_derived_name() -> None:
+    assert H.controlled().full_name == "ControlledHadamard"
+    assert Rz.controlled().full_name == "ControlledRotationZ"
+    assert X.controlled(2).full_name == "ControlledControlledPauliX"
+
+
+def test_an_arity_error_names_the_gate_both_ways(qc: Circuit) -> None:
+    a, b = qc.alloc_many(2)
+    with pytest.raises(QsimError, match=r"Toffoli \(ControlledControlledNot\)"):
+        Toffoli(a, b)
 
 
 # ---- inverses (declared now, used by Phase 2's adjoint) -----------------------
