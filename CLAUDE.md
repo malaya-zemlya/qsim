@@ -9,12 +9,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Authoritative documents (read in this order)
 
 1. `plans/master-plan.md` — build workflow, **binding conventions** (pedagogy rules, testing rules, code style), risk register. Its Conventions section governs all code written here.
-2. `plans/phase-*.md` — detailed per-phase build plans (Phase 0 scaffolding through Phase 6). Each is self-contained for a subagent and ends with "Interface decisions to review with the owner". Where a phase plan and the design doc conflict, **the phase plan wins**.
+2. `plans/phase-*.md` — detailed per-phase build plans (Phase 0 scaffolding through Phase 6). Each is self-contained for a subagent and ends with its interface decisions: "to review with the owner" while the phase is pending, rewritten as "resolved" plus "Deviations from this plan" once it ships. Where a phase plan and the design doc conflict, **the phase plan wins**.
 3. `qsim-design.md` — the design document: full API surface, algorithm specs, and the acceptance tests T1–T25 / TB1–TB3 / TD1–TD7 (§9), which are the specification.
+
+Directory-scoped notes live in `src/qsim/CLAUDE.md`, `tests/CLAUDE.md` and `notebooks/CLAUDE.md` — mechanics and gotchas local to each, loaded automatically when reading files in that directory. **Subagents do not reliably inherit them**, so a phase-build prompt must name the relevant one explicitly along with the phase plan.
 
 ## Build workflow
 
 Work proceeds phase by phase (0 → 1 → 1.5 → 2 → 2.5 → 3 → 4 → 5 → 6; phases 7/8 unplanned until 6 ships). Before building any phase's public API, **present its interface to the owner as short usage examples and get approval** — this review step is mandatory, per the master plan. One commit per phase.
+
+**Record the outcome back into the phase plan, in the same commit** (master plan step 5). Rewrite its "Interface decisions to review" section as *resolved* — each decision with the answer and its one-line reason — and add a "Deviations from this plan" section for anything built differently from what the plan specified. The plans are this project's documentation: they carry the *why* behind a decision, which code cannot hold and a commit message buries. A plan left in the future tense after its phase has shipped lies to the next reader.
 
 ## Commands
 
