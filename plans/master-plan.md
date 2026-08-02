@@ -17,13 +17,17 @@ Neither is secondary. Every phase ships both code and its notebook.
 | 1 | `phase-1-core.md` | state tensor, Circuit/Qubit/Register, gates, measurement, Inspector, basic viz, rich display | T1–T7 | 01, 02 |
 | 1.5 | `phase-1.5-entanglement-demos.md` | CHSH, teleportation, superdense coding | TB1–TB3 | 03 |
 | 2 | `phase-2-combinators.md` | record mode, `control`, `adjoint`, ancilla scopes, `@qsim.gate` | T8–T10 | 04 |
-| 2.5 | `phase-2.5-decoherence.md` | environment qubits, noise couplings, quantum eraser | TD1–TD7 | 05 |
-| 3 | `phase-3-qft-phase-estimation.md` | QFT, approximate QFT, phase estimation, semiclassical PE | T11–T15 | 06 |
+| 2.25 | `phase-2.25-interferometers.md` | Mach–Zehnder, complementarity, Elitzur–Vaidman, N-path, Stern–Gerlach | TI1–TI4 | 05 |
+| 2.5 | `phase-2.5-decoherence.md` | environment qubits, noise couplings, quantum eraser | TD1–TD7 | 06 |
+| 3 | `phase-3-qft-phase-estimation.md` | QFT, approximate QFT, phase estimation, semiclassical PE | T11–T15 | 07 |
 | 4 | `phase-4-arithmetic.md` | reversible adders, modular arithmetic, modexp | T16 | — |
-| 5 | `phase-5-shor.md` | Shor's algorithm end-to-end, T18 demonstration | T17–T19, T22–T25 | 07 |
-| 6 | `phase-6-grover-dj-viz.md` | Grover, Deutsch–Jozsa, circuit diagrams, entropy trace, widgets | T20, T21 | 08 |
+| 5 | `phase-5-shor.md` | Shor's algorithm end-to-end, T18 demonstration | T17–T19, T22–T25 | 08 |
+| 6 | `phase-6-grover-dj-viz.md` | Grover, Deutsch–Jozsa, circuit diagrams, entropy trace, widgets | T20, T21 | 09 |
 
-Phases run strictly in order. Note one deliberate deviation from the design doc: **T17 (precision comparison) is built in Phase 5, not Phase 3**, because it needs the period-finding circuit that only exists after Phase 4. The design doc's phase list assigned it to Phase 3; these plans override that.
+Phases run strictly in order. Two deliberate deviations from the design doc:
+
+- **T17 (precision comparison) is built in Phase 5, not Phase 3**, because it needs the period-finding circuit that only exists after Phase 4. The design doc's phase list assigned it to Phase 3; these plans override that.
+- **Phase 2.25 (interferometers) was added after Phase 2 shipped**, at the owner's request, and it pushed every later notebook number up by one. It needs no new library machinery — a Hadamard *is* a 50/50 beam splitter — and it sets up decoherence directly, since a which-path detector is an environment qubit by another name.
 
 Phases 7 (quantum trajectories, error correction, quantum Darwinism, Trotterized Ising — "emergence of the classical") and 8 (density-matrix backend) are deliberately **not planned yet**. Their plans get written when Phase 6 is done, informed by the real codebase. The design doc §11 sketches both.
 
