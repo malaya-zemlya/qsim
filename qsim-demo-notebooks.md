@@ -125,7 +125,10 @@ T18 as narrative: period-finding with and without ancilla uncomputation (test-on
 
 ---
 
-## Track E — Foundations (after Phase 5; library-complete material)
+## Track E — Foundations (after Phase 5; library-complete material, except E0)
+
+### E0 — `l1_vs_l2.ipynb` *(owner-specced in full — the spec is `plans/demo-l1-vs-l2-spec.md` and governs)*
+Classical probability and QM side by side: the same design — norm-1 states, norm-preserving linear maps, tensor composition — on the 1-norm vs the 2-norm. A ~60-line notebook-local `csim` mirrors qsim's tensor mechanics (diff the simulators, find only the matrix constraints); simplex rigidity vs √NOT; the Fisher–Rao orthant as a statics-only theory; addition vs cancellation; shared coin vs Bell state with CHSH (purity is the difference); and the bridge back — |U|² is doubly stochastic and full dephasing after every gate *is* the classical simulator. **Buildable after Phase 2.5** (shipped), unlike the rest of Track E.
 
 ### E1 — `deferred_measurement.ipynb`
 Every mid-circuit measurement in a small circuit replaced by CNOT-to-record; final statistics identical (TVD over seeded shots). Then the one thing deferral *loses*: conditional states. Narrative ties to B4 and C3 — the same principle in three costumes.

@@ -21,6 +21,7 @@ The owner's `qsim-demo-notebooks.md` (repo root) is the authoritative content pl
 |---|---|---|---|
 | AB | A1–A3, B1–B4 | Phase 2.75 shipped | B4 (Wigner's friend) should use `within`/adjoint-of-block for the uncompute, and may use `checkpoint`/`rewind` as a second telling of the same story. |
 | B5 | `horizon.ipynb` | **`escape` API** (below) | Do not build before the API lands. |
+| E0 | `l1_vs_l2.ipynb` | Phase 2.5 (shipped) | Owner spec verbatim in `plans/demo-l1-vs-l2-spec.md`; it governs. `csim` stays notebook-local (no `qsim.contrib` module without an interface review). |
 | C | C1–C4 | Phase 3 | C4 is T17's demo form; coordinate with Phase 5's T17 test (same circuit family, dtype sweep) — build C4 in the Phase 5 window if the period-finding state is wanted, or earlier with a hand-prepared periodic state, clearly labeled. |
 | D | D1–D4 | Phase 5 | D3 uses the same escape hatch as T18. |
 | E | E1–E4 | Phase 5 | E4: no scipy — build `logm` by hand from `eigh` in the notebook (eigendecompose ρ, take −log of eigenvalues; comment the numpy). E2/E3 mix qsim with raw numpy; that is fine in notebooks (the 2^n×2^n ban applies to `src/qsim/` only). |
