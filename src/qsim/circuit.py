@@ -23,9 +23,22 @@ wrong qubit — the worst kind of bug, because the program keeps running and jus
 computes something else. So a handle remembers "I am qubit id 3", the circuit owns
 the single table from ids to axes, and every operation looks the axis up at the
 moment it acts. The story "axis k is qubit k" survives, one indirection away.
+
+The history is a tape
+---------------------
+Every operation that runs is appended to ``circuit.history``, and that record is not
+just a log to print. Deep-learning libraries work the same way: they run each
+operation immediately *and* record it, so that the recorded sequence can later be
+walked backwards (that is what "backpropagation" walks). Ours can be walked backwards
+too, and more cheaply, because every gate is invertible.
+
+Three methods make the tape a thing you use rather than a thing you read:
+:meth:`Circuit.checkpoint` marks a position, :meth:`Circuit.rewind` undoes everything
+after a mark by running its inverses, and :meth:`Circuit.on_op` attaches an observer
+that sees every operation as it happens. Notebook 04 uses all three.
 """
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, overload
 
@@ -66,6 +79,62 @@ class Op:
     def all_qubit_ids(self) -> tuple[int, ...]:
         """Every qubit this op touches, controls included."""
         return self.controls + self.qubit_ids
+
+
+@dataclass(frozen=True)
+class Checkpoint:
+    """A position on a circuit's tape, plus the allocation fingerprint valid there.
+
+    Made by :meth:`Circuit.checkpoint` and consumed by :meth:`Circuit.rewind`. It is
+    deliberately *not* a copy of the state: nothing about the state is saved here, and
+    nothing needs to be. Undoing a stretch of quantum program means running its gates
+    backwards, and the tape already says which gates those were.
+
+    (That is the one place where this library's tape is *simpler* than an autograd
+    tape. PyTorch has to keep the intermediate tensors around to compute gradients on
+    the way back; we keep nothing, because every gate is invertible. "No saved
+    activations" is the software shadow of "unitaries destroy no information".)
+
+    The three numbers are a fingerprint of which qubits existed at that moment, so
+    that :meth:`Circuit.rewind` can refuse to replay ops naming qubits that have since
+    been released or renumbered.
+    """
+
+    #: The circuit this position belongs to. A mark means nothing on another circuit.
+    _circuit: Circuit = field(repr=False)
+    #: How many ops the history held when the mark was taken.
+    _history_len: int
+    #: How many qubit ids had ever been handed out — catches allocation since the mark.
+    _next_id: int
+    #: How many qubits were live — catches an ancilla release since the mark.
+    _n_qubits: int
+
+    def __repr__(self) -> str:
+        label = f" of Circuit {self._circuit.name!r}" if self._circuit.name else ""
+        return f"<Checkpoint at op {self._history_len}{label}, {self._n_qubits} qubits>"
+
+
+class HookHandle:
+    """The receipt for a hook registered with :meth:`Circuit.on_op`.
+
+    Keep it if you ever want the hook to stop firing; call :meth:`remove` and it
+    detaches. Removing twice is harmless.
+    """
+
+    __slots__ = ("_circuit", "_fn")
+
+    def __init__(self, circuit: Circuit, fn: Callable[[Op, Circuit], None]) -> None:
+        self._circuit = circuit
+        self._fn = fn
+
+    def remove(self) -> None:
+        """Detach the hook. Safe to call more than once."""
+        if self._fn in self._circuit._hooks:
+            self._circuit._hooks.remove(self._fn)
+
+    def __repr__(self) -> str:
+        attached = "attached" if self._fn in self._circuit._hooks else "removed"
+        return f"<HookHandle {getattr(self._fn, '__name__', 'hook')}, {attached}>"
 
 
 class Qubit:
@@ -245,6 +314,11 @@ class Circuit:
         # set changes nothing about the physics; it only tells the Inspector which
         # qubits it should stop tracking when asked for the *system's* point of view.
         self._is_env: set[int] = set()
+        # Observers attached with on_op(). They are called after every executed op,
+        # gates and measurements alike, and are forbidden from emitting ops themselves
+        # — see _refuse_while_hooked.
+        self._hooks: list[Callable[[Op, Circuit], None]] = []
+        self._in_hook = False
         self._rng = np.random.default_rng(seed)
         # A second, independent stream used only by inspect.sample(). Sampling is a
         # simulator cheat, not a physical measurement, so it must not consume draws
@@ -415,6 +489,147 @@ class Circuit:
             counts[name] = counts.get(name, 0) + 1
         return counts
 
+    # ---- the tape: checkpoint, rewind, hooks ------------------------------------
+
+    def checkpoint(self) -> Checkpoint:
+        """Mark the current position on the tape, for :meth:`rewind` to return to.
+
+            mark = qc.checkpoint()
+            H(q); CNOT(q, e)          # entangle, and watch coherence die
+            qc.rewind(mark)           # ... and bring it back
+
+        Nothing is copied. A :class:`Checkpoint` is a position and an allocation
+        fingerprint, and that is enough: undoing quantum work means running its gates
+        backwards, and the tape already knows which gates those were.
+
+        Cheap enough to take in a loop — that is how notebook 04 sweeps a parameter
+        without rebuilding the circuit each time.
+        """
+        return Checkpoint(self, len(self._history), self._next_id, self.n_qubits)
+
+    def rewind(self, mark: Checkpoint) -> None:
+        """Undo everything done since ``mark``, by running it backwards.
+
+        Each op recorded after the mark is inverted and executed, newest first —
+        undoing "put on socks, then shoes" is "take off shoes, then socks". When the
+        walk finishes the state is the state at the checkpoint, to floating-point
+        precision. Nothing was saved and nothing was restored; the work was simply
+        run in reverse.
+
+        **The tape stays honest.** Those inverse gates physically ran, so they are
+        appended to the history like any other op — the history is never rewritten or
+        truncated. The *state* goes back; the *record* shows how it got back, the way
+        an editor's undo appears in the edit log rather than erasing your keystrokes
+        from it. So ``gate_counts()`` after a rewind includes the undoing, and it
+        should: those gates would cost time on real hardware, and a circuit diagram
+        that hid them would be a diagram of a program nobody ran.
+
+        One consequence to know before you write a loop: rewinding twice to the *same*
+        mark also undoes the first rewind, since the first rewind's gates are on the
+        tape too. The state still comes out right — undoing an undo is a redo, and then
+        the redo is undone in turn — but the op count doubles each time round. When
+        sweeping a parameter, take a fresh mark after each rewind (the state there is
+        the state at the old mark), and the tape grows one entry per pass.
+
+        Raises :class:`~qsim.errors.QsimError` if the stretch being undone contains a
+        measurement (the one operation with no inverse), if qubits were allocated or
+        released since the mark, or if a combinator scope is open. Every check runs
+        *before* anything touches the state, so a refused rewind changes nothing.
+        """
+        self._refuse_while_hooked()
+        if self._record_stack:
+            raise QsimError(
+                "cannot rewind while a combinator scope is open. Inside "
+                "`with qc.control(...)`, `with qc.adjoint():` or a @qsim.gate block, "
+                "the body's ops have been recorded but not yet run: the tape and the "
+                "state deliberately disagree until the scope closes, so there is no "
+                "consistent position to rewind to. Close the scope — its ops execute "
+                "on the way out — and rewind after that."
+            )
+        if mark._circuit is not self:
+            raise QsimError(
+                "this checkpoint belongs to a different circuit. A mark is a position "
+                "on one circuit's tape together with the qubits that existed there; on "
+                "another circuit, with its own history and its own qubits, it names "
+                "nothing."
+            )
+        if mark._history_len > len(self._history):
+            raise QsimError(
+                f"this checkpoint points past the end of the tape: it marks op "
+                f"{mark._history_len}, and the history is {len(self._history)} ops "
+                "long. Marks are positions in a record that only ever grows — even a "
+                "rewind appends to it — so a position beyond the end is one that never "
+                "happened on this circuit."
+            )
+        if self._next_id != mark._next_id or self.n_qubits != mark._n_qubits:
+            raise QsimError(
+                f"cannot rewind across a change in which qubits exist. The circuit had "
+                f"{mark._n_qubits} qubit(s) when the mark was taken and has "
+                f"{self.n_qubits} now; {mark._next_id} had ever been allocated then, "
+                f"{self._next_id} now.\n\n"
+                "Ops on the tape name their qubits by id, and replaying their inverses "
+                "only means something if those qubits are still there and still hold "
+                "what they held. Allocating a qubit adds an axis to the state tensor "
+                "and releasing an ancilla removes one, renumbering the axes underneath "
+                "the recorded ops. Take the mark inside the allocation instead — or "
+                "rewind before the ancilla scope closes, which is the usual intent "
+                "anyway, since that is what makes the ancillas come back clean."
+            )
+
+        suffix = self._history[mark._history_len :]
+        for position, op in enumerate(suffix, start=mark._history_len):
+            if op.gate is None:
+                raise QsimError(
+                    f"cannot rewind across the measurement at op {position} of the "
+                    "history. Every gate carries a rule for its own inverse, which is "
+                    "what lets the tape be walked backwards at all — every gate except "
+                    "one. Measurement has no inverse rule: it picked one branch of a "
+                    "superposition at random and discarded the others, and nothing "
+                    "brings back what was discarded. The measurement severed the tape, "
+                    "exactly the way a non-differentiable operation severs an autograd "
+                    "graph — everything before the cut is intact, but you cannot get "
+                    "back through it.\n\n"
+                    "The alternative is not to cut it. If you want the world to hold a "
+                    "record of the qubit and still be able to undo the recording, "
+                    "entangle instead of measuring: couple the qubit to another qubit "
+                    "and leave that record coherent. The coupling is then a unitary "
+                    "like any other and runs backwards perfectly — that is the quantum "
+                    "eraser (06-decoherence.ipynb §9, test TD3). Otherwise, rewind only "
+                    "to a mark taken after the measurement."
+                )
+
+        # Walk the suffix newest-first, executing each op's inverse. No new kernel
+        # code: an inverse op is an ordinary op, and it goes through _execute like
+        # every other, which is exactly why it lands on the tape.
+        for op in reversed(suffix):
+            self._execute(op.gate.adjoint_op(op))
+
+    def on_op(self, fn: Callable[[Op, Circuit], None]) -> HookHandle:
+        """Call ``fn(op, circuit)`` after every operation this circuit runs.
+
+            entropies: list[float] = []
+            handle = qc.on_op(lambda op, c: entropies.append(
+                c.inspect.entanglement_entropy([q])))
+            ...
+            handle.remove()
+
+        The hook sees gates *and* measurements, in the order they happened, with the
+        state already updated — so it can ask the Inspector anything, and gets the
+        answer as of just after that op. That is all ``viz.entropy_trace`` is: a hook
+        that records one number per gate.
+
+        Hooks observe and must not emit. Applying a gate or measuring from inside a
+        hook raises, because those ops would appear on the tape with no line of the
+        program accounting for them. To transform a program rather than watch one, use
+        the combinators.
+
+        There are deliberately no priorities and no filters: hooks fire in the order
+        they were attached, and a hook that only cares about measurements checks
+        ``op.name`` itself.
+        """
+        self._hooks.append(fn)
+        return HookHandle(self, fn)
+
     # ---- combinator scopes ------------------------------------------------------
 
     def control(self, *controls: Qubit) -> Any:
@@ -560,12 +775,45 @@ class Circuit:
             self._axis(q)  # raises for a foreign or released handle
 
     def _record(self, op: Op) -> None:
+        """The one place the history grows — and therefore the one place hooks fire.
+
+        Gates reach it through :meth:`_execute` and measurements reach it directly from
+        ``measure.py``, so an observer attached here sees the whole program, in the
+        order it really happened, with the state already updated.
+        """
         self._history.append(op)
+        if self._hooks:
+            # Iterate over a snapshot: a hook is allowed to remove itself (or another
+            # hook) while it runs, and mutating the list we are walking would silently
+            # skip the next hook.
+            previously_in_hook = self._in_hook
+            self._in_hook = True
+            try:
+                for fn in list(self._hooks):
+                    fn(op, self)
+            finally:
+                self._in_hook = previously_in_hook
+
+    def _refuse_while_hooked(self) -> None:
+        """Raise if we are inside a hook. Called before anything that touches the tape."""
+        if self._in_hook:
+            raise QsimError(
+                "a hook tried to apply an operation to the circuit. Hooks watch the "
+                "tape; they do not write to it. An op emitted from inside a hook would "
+                "land in the history with no line of your program accounting for it, "
+                "and it would immediately fire every hook again — including the one "
+                "that emitted it.\n\n"
+                "If you want to *transform* a program rather than watch it, the "
+                "combinators are the tools for that: qsim.within, qc.control, "
+                "qc.adjoint and @qsim.gate blocks all put their ops on the tape at the "
+                "point where you asked for them."
+            )
 
     # ---- the emit / execute funnel ---------------------------------------------
 
     def _emit(self, op: Op) -> None:
         """Every gate arrives here. Run it now, or record it for a scope to transform."""
+        self._refuse_while_hooked()
         if self._record_stack:
             self._record_stack[-1].append(op)
         else:
@@ -602,7 +850,10 @@ class Circuit:
         else:
             self._psi = state.apply_2q(self._psi, data, targets[0], targets[1])
 
-        self._history.append(op)
+        # One funnel: gates do not append to the history themselves. Everything that
+        # runs — this gate, and every measurement in measure.py — goes on the tape
+        # through _record, which is where hooks live.
+        self._record(op)
 
     def _push_record(self) -> None:
         self._record_stack.append([])

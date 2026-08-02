@@ -124,9 +124,25 @@ def on_op(self, fn: Callable[[Op, Circuit], None]) -> HookHandle
 - Design doc §4.5/§4.6 docstring content present in the code (identities, tape-honesty, severed-tape message).
 - Report "Decisions made", including exact derived-block naming and any message wording choices.
 
-## Interface decisions to review with the owner (before building)
+## Interface decisions — RESOLVED (owner review 2026-08-02, all as recommended)
 
-1. **Rewind tape semantics** — honest-append (recommended, specced above) vs truncate-to-mark. Present the tradeoff in one paragraph: honest-append keeps the tape a true record (diagrams, counts, entropy traces never lie) at the cost of `gate_counts()` including undo gates; truncation gives clean counts but a tape that pretends.
-2. **Naming** — `checkpoint`/`rewind` (recommended; editor/VCS resonance) vs `save`/`restore` vs `mark`/`undo_to`.
-3. **`within` argument form confirmation** with the final call examples from design doc §4.5 (this was provisionally settled in conversation; confirm against the real signatures).
-4. **Hook signature** — `fn(op, circuit)` (recommended) vs `fn(op)` with the circuit closed over; show both in a live-entropy example.
+1. **Rewind tape semantics: honest append.** Inverse gates are appended to the history; the tape is a true record of everything that physically ran, at the cost of `gate_counts()` including undo gates. Reason: the tape must never lie — diagrams, counts, and entropy traces stay faithful, and "the record shows how you got back" is the teaching point.
+2. **Naming: `checkpoint` / `rewind`.** Editor/VCS/gradient-checkpointing resonance; `save`/`restore` was rejected for suggesting state copying, which is not what happens.
+3. **`within(V, *args, **kwargs)` confirmed** — callable plus its arguments, body eager, V† on exit; zero-arg thunks accepted for free.
+4. **Hook signature: `fn(op, circuit)`.** Self-contained hooks that work as plain named functions, not only closures.
+
+Build exactly to these; deviations go in "Deviations from this plan".
+
+## Deviations from this plan
+
+1. **`within`'s measurement guard is not reachable the obvious way.** §1 step 3 says to reject a captured op with `gate=None`. Capturing V pushes a record buffer, and `measure()` already refuses to run while *any* buffer is open — so a V that measures raises `measure.py`'s combinator-scope message before `within` ever sees an op. The captured-op check is implemented anyway (it is what makes "V must be invertible" a property of the ops rather than of how they were produced) and is exercised by a test that emits a measurement op into the buffer by hand; a second test pins the message a user actually gets. Both messages teach.
+2. **The stale-mark wording changed, because honest-append makes the case the plan describes impossible.** §3 asks for a message about "a mark from a future that a prior rewind already unwound past". Under decision 1 the history only ever grows — even a rewind appends — so a circuit's own marks can never outrun it. `mark._history_len > len(self._history)` is now only reachable with a hand-built `Checkpoint`, and says plainly that the position never happened on this circuit. Rewinding to a *later* mark after an earlier one is not an error at all: it is a redo, and `test_tape.py` documents it.
+3. **`Checkpoint` carries a fourth field, `_circuit`** (repr-suppressed), so `rewind` can reject a foreign mark. The plan's sketch listed only the three numbers.
+4. **`Block.controlled()` with no controls raises** (`QsimError`, "needs at least one control qubit"). The plan did not say; a zero-control derived block would be named `-bell` and would mean nothing.
+5. **Blocks keep one name, not two.** §2 suggested matching gates' `name`/`full_name` convention. Gates need two names because `H` is a symbol; a block is already named by a `def`, so `Block.name` is the whole story and the class docstring says why.
+6. **The hook reentrancy guard is a shared `Circuit._refuse_while_hooked()`**, called from `_emit`, from `measure()` and from `rewind()` — not from `_emit` alone. Measuring or rewinding inside a hook is the same mistake as emitting a gate, and the message lives in one place.
+7. **`Checkpoint` and `HookHandle` are exported from `qsim`**, for type annotations on user-written hooks and marks.
+8. **`_circuit_of` gained a `message=` parameter** rather than `within` duplicating the handle scan, so the two "you must pass a qubit" errors can each explain their own construct.
+9. **The shared control/adjoint transforms are private** (`_lift_to_controlled`, `_invert` in `combinators.py`), to avoid widening the public API beyond what the plan specified.
+10. **A rewind caveat was found while writing the tests and is now documented** in `rewind`'s docstring, in `test_tape.py` and in notebook 04 §7: rewinding twice to the *same* mark also undoes the first rewind (its gates are on the tape too), so the state stays right but the op count doubles each pass. Take a fresh mark after each rewind when sweeping a parameter.
+11. **Notebook 04's three new sections were inserted before "What you now know"**, not after it, and three bullets were appended to that summary — a notebook whose closing summary sat in the middle would be worse than one whose summary mentions the new material.

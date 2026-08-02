@@ -49,6 +49,10 @@ def measure(circuit: Circuit, q: Qubit) -> int:
     measurement leaves it in the state it reported, so the second is no longer
     random. Both are recorded in the history.
     """
+    # A hook is an observer of the tape, and measuring would both write to the tape and
+    # collapse the state out from under the op the hook was called about. Same message
+    # as for a gate emitted from a hook, and it lives in one place.
+    circuit._refuse_while_hooked()
     if circuit._record_stack:
         raise QsimError(
             f"cannot measure {q._name} inside a combinator scope. Measurement is the "

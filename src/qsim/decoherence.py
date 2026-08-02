@@ -51,7 +51,7 @@ the precise sense in which *a record destroys interference*.
 import numpy as np
 
 from qsim.circuit import Qubit, Register
-from qsim.combinators import gate
+from qsim.combinators import gate, within
 from qsim.errors import QsimError
 from qsim.gates import CNOT, H, Ry, S, X, Y, Z
 
@@ -239,6 +239,24 @@ def depolarizing_coupling(q: Qubit, env: Register, *, p: float) -> None:
         Z(q)
 
 
+def _onto_computational_basis(q: Qubit, *, basis: str) -> None:
+    """Rotate the chosen basis onto the computational one — the V of the sandwich.
+
+    For x that is H, which maps |+>,|-> to |0>,|1>. For y it is H·S†, which maps the
+    Y-eigenstates the same way: S† turns (|0> + i|1>)/sqrt2 into |+>, and H then turns
+    |+> into |0>. For z there is nothing to do — the chosen basis is already the
+    computational one — and an empty V is a perfectly good V, so the caller needs no
+    special case.
+
+    A plain function rather than a ``@qsim.gate`` block, so its gates are stamped with
+    the coupling that called it rather than showing up as a block of their own.
+    """
+    if basis == "y":
+        S.adjoint()(q)
+    if basis in ("x", "y"):
+        H(q)
+
+
 @gate
 def pointer_coupling(q: Qubit, env: Qubit, *, theta: float, basis: str = "z") -> None:
     """Dephase ``q`` in a chosen basis — the knob that selects which states survive.
@@ -274,18 +292,8 @@ def pointer_coupling(q: Qubit, env: Qubit, *, theta: float, basis: str = "z") ->
             "basis is what decides which states the environment leaves alone — see the "
             "einselection section of 06-decoherence.ipynb."
         )
-    # Rotate the chosen basis onto the computational one. For x that is H, which maps
-    # |+>,|-> to |0>,|1>. For y it is H·S†, which maps the Y-eigenstates the same way:
-    # S† turns (|0> + i|1>)/sqrt2 into |+>, and H then turns |+> into |0>.
-    if basis == "y":
-        S.adjoint()(q)
-    if basis in ("x", "y"):
-        H(q)
-
-    dephasing_coupling(q, env, theta=theta)
-
-    # Undo the basis change, so the qubit is left in the basis the caller handed us.
-    if basis in ("x", "y"):
-        H(q)
-    if basis == "y":
-        S(q)
+    # The structure *is* the sentence "dephasing, conjugated into another basis":
+    # `within` applies the basis change now and undoes it on the way out, so the two
+    # halves cannot drift apart, and the body in between is plain dephasing.
+    with within(_onto_computational_basis, q, basis=basis):
+        dephasing_coupling(q, env, theta=theta)

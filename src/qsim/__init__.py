@@ -29,8 +29,8 @@ everything a real quantum computer would never let you see. The notebooks in
 """
 
 from qsim import decoherence, errors, gates, viz
-from qsim.circuit import Circuit, Op, Qubit, Register
-from qsim.combinators import Block, gate
+from qsim.circuit import Checkpoint, Circuit, HookHandle, Op, Qubit, Register
+from qsim.combinators import Block, gate, within
 from qsim.errors import (
     DeadQubitError,
     DirtyAncillaError,
@@ -86,9 +86,13 @@ __all__ = [
     "Inspector",
     "Ket",
     "Bra",
+    # the tape
+    "Checkpoint",
+    "HookHandle",
     # combinators
     "Block",
     "gate",
+    "within",
     # gates
     "Gate",
     "ParametrizedGate",
