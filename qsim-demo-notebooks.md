@@ -38,6 +38,9 @@ Contrast with the product state `H(a); H(b)`: same single-qubit marginals? No �
 ### A3 — `no_cloning_and_dead_qubits.ipynb`
 The error-message tour. Deliberately trigger `NoCloningError` (`CNOT(a,a)`, `copy.copy(q)`), `DeadQubitError`, `DirtyAncillaError`; display each message. Narrative: each exception is a theorem wearing a stack trace.
 
+### A4 — `quaternions_and_spin.ipynb` *(owner request, added after batch AB)*
+Single-qubit rotations **are** unit quaternions — same group, half-angles included. Hand-rolled numpy quaternions (Hamilton product commented); the exact dictionary $U = a\,I - i(b\,\sigma_x + c\,\sigma_y + d\,\sigma_z) \leftrightarrow q = a + bi + cj + dk$ verified numerically on qsim's own gate matrices (products match products); Bloch-vector rotation via `inspect.bloch_vector` matches quaternion conjugation $qvq^{-1}$. Then the double cover: sweep θ to 4π — the Bloch vector is 2π-periodic while the quaternion needs 4π, hitting −1 at 2π. Finale: the −1 is *physical* — `with control(c): Rx(q, 2π)` flips the control's phase and an H-sandwich measures it deterministically. Punchline: the sign quaternions carry silently, a qubit can cash out; cross-link A1's closing cell.
+
 ---
 
 ## Track B — Decoherence (after Phase 2.5)
