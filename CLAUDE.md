@@ -10,7 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 1. `plans/master-plan.md` — build workflow, **binding conventions** (pedagogy rules, testing rules, code style), risk register. Its Conventions section governs all code written here.
 2. `plans/phase-*.md` — detailed per-phase build plans (Phase 0 scaffolding through Phase 6). Each is self-contained for a subagent and ends with its interface decisions: "to review with the owner" while the phase is pending, rewritten as "resolved" plus "Deviations from this plan" once it ships. Where a phase plan and the design doc conflict, **the phase plan wins**.
-3. `qsim-design.md` — the design document: full API surface, algorithm specs, and the acceptance tests T1–T25 / TB1–TB3 / TD1–TD7 (§9), which are the specification.
+3. `qsim-design.md` — the design document: full API surface, algorithm specs, and the acceptance tests T1–T25 / TB1–TB3 / TD1–TD7 / TT1–TT8 (§9), which are the specification.
+4. `qsim-demo-notebooks.md` (owner-authored) — the content plan for the standalone demo gallery in `notebooks/demos/`; `plans/demos-track.md` maps it onto the build workflow. Demo shape is the requirement there, not exact API calls.
 
 Directory-scoped notes live in `src/qsim/CLAUDE.md`, `tests/CLAUDE.md` and `notebooks/CLAUDE.md` — mechanics and gotchas local to each, loaded automatically when reading files in that directory. **Subagents do not reliably inherit them**, so a phase-build prompt must name the relevant one explicitly along with the phase plan.
 
