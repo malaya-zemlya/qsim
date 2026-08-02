@@ -117,7 +117,15 @@ def bloch(qc: Circuit, q: Qubit, *, figsize: tuple[float, float] = (4.0, 4.0)) -
 
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(projection="3d")
+    x, y, z = qc.inspect.bloch_vector(q)
+    _draw_bloch(ax, (x, y, z))
+    length = float(np.sqrt(x * x + y * y + z * z))
+    ax.set_title(f"{q.name} — vector length {length:.2f} (1 = pure)", y=1.02)
+    return fig
 
+
+def _draw_bloch(ax: Any, vector: tuple[float, float, float]) -> None:
+    """Draw one Bloch vector inside a wireframe sphere on an existing 3-D axis."""
     # A sparse wireframe sphere: enough lines to read as a ball, few enough to see
     # the vector through it.
     u, v = np.mgrid[0 : 2 * np.pi : 17j, 0 : np.pi : 9j]
@@ -128,7 +136,7 @@ def bloch(qc: Circuit, q: Qubit, *, figsize: tuple[float, float] = (4.0, 4.0)) -
     for axis in np.eye(3):
         ax.plot(*np.array([-axis, axis]).T, color="gray", alpha=0.35, linewidth=0.6)
 
-    x, y, z = qc.inspect.bloch_vector(q)
+    x, y, z = vector
     ax.quiver(0, 0, 0, x, y, z, color="crimson", linewidth=2.4, arrow_length_ratio=0.16)
     for pos, label in [
         ((0, 0, 1.12), "|0⟩"), ((0, 0, -1.32), "|1⟩"),
@@ -142,9 +150,103 @@ def bloch(qc: Circuit, q: Qubit, *, figsize: tuple[float, float] = (4.0, 4.0)) -
     ax.set_ylim(-0.85, 0.85)
     ax.set_zlim(-0.85, 0.85)
     ax.view_init(elev=14, azim=-52)
-    length = float(np.sqrt(x * x + y * y + z * z))
-    ax.set_title(f"{q.name} — vector length {length:.2f} (1 = pure)", y=1.02)
+
+
+def dephasing_panels(theta: float, *, figsize: tuple[float, float] = (10.5, 3.4)) -> Any:
+    """Three views of one dephased qubit at coupling angle ``theta``. Returns the figure.
+
+    Left: the system qubit's Bloch vector, shrinking along x as the environment learns.
+    Middle: the two-slit visibility curve cos(θ/2), with a marker at the current θ.
+    Right: the reduced density matrix, whose off-diagonal fades while its diagonal
+    stays put — decoherence in the one picture that shows both at once.
+
+    Built fresh for each θ rather than by adjusting an existing circuit: a coupling is
+    a physical interaction, not a setting, so "θ = 0.4 instead of 0.9" means a different
+    experiment, not an edit to this one.
+    """
+    import matplotlib.pyplot as plt
+
+    from qsim.circuit import Circuit as _Circuit
+    from qsim.decoherence import dephasing_coupling
+    from qsim.gates import H
+
+    qc = _Circuit()
+    q = qc.alloc("q")
+    env = qc.environment(1)
+    H(q)
+    dephasing_coupling(q, env[0], theta=theta)
+    rho = qc.inspect.system_density_matrix()
+
+    fig = plt.figure(figsize=figsize)
+    ax_bloch = fig.add_subplot(1, 3, 1, projection="3d")
+    _draw_bloch(ax_bloch, qc.inspect.bloch_vector(q))
+    ax_bloch.set_title(f"Bloch vector\ncoherence {qc.inspect.coherence(q):.3f}", y=1.0)
+
+    ax_vis = fig.add_subplot(1, 3, 2)
+    grid = np.linspace(0, np.pi, 200)
+    ax_vis.plot(grid, np.cos(grid / 2), color="crimson", linewidth=1.6)
+    ax_vis.plot([theta], [np.cos(theta / 2)], "o", color="crimson", markersize=8)
+    ax_vis.set_xticks([0, np.pi / 2, np.pi])
+    ax_vis.set_xticklabels(["0", "π/2", "π"])
+    ax_vis.set_xlabel("θ — how much the environment learns")
+    ax_vis.set_ylabel("visibility")
+    ax_vis.set_ylim(-0.05, 1.05)
+    ax_vis.set_title(f"interference visibility\n{np.cos(theta / 2):.3f}")
+
+    ax_rho = fig.add_subplot(1, 3, 3)
+    ax_rho.imshow(np.abs(rho), cmap="magma", vmin=0.0, vmax=0.5)
+    for i in range(2):
+        for j in range(2):
+            # Annotate each cell with its own value; white on the dark end of the
+            # colormap, black on the light end, so both stay readable.
+            ax_rho.text(
+                j, i, f"{abs(rho[i, j]):.3f}", ha="center", va="center",
+                color="white" if abs(rho[i, j]) < 0.32 else "black",
+            )
+    ax_rho.set_xticks([0, 1], ["|0⟩", "|1⟩"])
+    ax_rho.set_yticks([0, 1], ["⟨0|", "⟨1|"])
+    ax_rho.set_title("reduced density matrix |ρ|\ndiagonal fixed, off-diagonal fading")
+    fig.tight_layout()
     return fig
+
+
+def interact_dephasing() -> None:
+    """A slider over the coupling angle θ, redrawing :func:`dephasing_panels` live.
+
+    Drag it and watch the three panels move together: the Bloch vector retracts toward
+    the origin, the marker slides down the visibility curve, and the off-diagonal of ρ
+    fades while the diagonal does not budge. Three descriptions of one thing.
+    """
+    try:
+        import ipywidgets
+    except ImportError as exc:
+        raise ImportError(
+            "interact_dephasing() needs ipywidgets, a development dependency of qsim "
+            "rather than a runtime one — the library itself only requires numpy and "
+            "matplotlib. Run `uv sync` to install it, then restart the kernel."
+        ) from exc
+
+    import matplotlib.pyplot as plt
+    from IPython.display import display
+
+    def show(theta: float) -> None:
+        # Draw and show explicitly, returning None. Handing the Figure back instead
+        # would render it twice — once by the inline backend and once as the callback's
+        # displayed result, the same trap as a bare viz call.
+        dephasing_panels(theta)
+        plt.show()
+
+    slider = ipywidgets.FloatSlider(
+        min=0.0, max=np.pi, step=np.pi / 60, value=0.0, description="θ",
+    )
+    # ``interactive_output`` rather than the more familiar ``ipywidgets.interact``.
+    # ``interact`` deadlocks a headless kernel perhaps half the time — measured here at
+    # 2 runs in 4 with a trivial callback and no plotting at all — which would make
+    # ``jupyter execute`` on this notebook hang at random. It also inspects the
+    # callback's signature and would try to build a second slider out of
+    # ``dephasing_panels``' figsize tuple. This form does neither.
+    panels = ipywidgets.interactive_output(show, {"theta": slider})
+    display(slider, panels)
 
 
 def circuit_html(qc: Circuit, max_terms: int = 8) -> str:

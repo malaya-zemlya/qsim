@@ -85,8 +85,17 @@ The conceptual heart of the whole library; take the space it needs.
 - Every coupling docstring states its Kraus operators; TD6 checks them independently.
 - Report "Decisions made" (including any `# pragma: no cover` with justification).
 
-## Interface decisions to review with the owner (before building)
+## Interface decisions — resolved
 
-1. Coupling parameter style: raw `theta` everywhere vs. the channel-native parameter (e.g. damping probability `gamma` for amplitude damping, with θ derived) — show both call styles; recommend θ for uniformity with a `gamma=`-style note in docstrings.
-2. `interact_dephasing()` layout mock (two panels) — worth a quick look before it's built.
-3. Whether `qc.inspect.bloch_vector(q)` should *automatically* use the reduced state when environments exist — it already does by construction (reduced ρ of one qubit); confirm the owner understands the default-view semantics of `environment()` with a two-line example.
+1. **Coupling parameter style: `theta` everywhere, plus converter helpers.** Every coupling takes `theta=`, the angle the circuit actually rotates by, because hiding it would hide the mechanism the phase exists to teach. `damping_angle(gamma)` and `dephasing_angle(lam)` convert from the textbook parameters, so a number looked up in a table needs no arithmetic at the call site. `depolarizing_coupling` keeps `p=`, which is the only parameter that channel is ever quoted by and corresponds to no single angle.
+2. **`interact_dephasing()` shows three panels**, not two: Bloch vector, visibility curve, *and* the reduced density matrix. The owner chose the fuller layout — the ρ heatmap is what makes "the diagonal does not move" visible rather than asserted, which is TD4's point in picture form.
+3. **Environment marking is not enforced by the couplings.** A coupling accepts any qubit as its environment; `environment()` only sets the Inspector's default view. Requiring a marked qubit would contradict the phase's central claim — being an environment is a decision about where you point your attention, not a property of a qubit — and it lets notebook 04's dirty ancilla be shown as literally the same phenomenon. `bloch_vector(q)` already reports the reduced state by construction, so it needed no change.
+
+## Deviations from this plan
+
+- **The notebook is `06-decoherence.ipynb`, not `05`.** Phase 2.25 (interferometers) took 05 and renumbered everything after it; the master plan's phase index records the shift.
+- **Two extra Inspector members** beyond the three the plan lists: `environment_entropy()` — TD7 compares system and environment entropy, and computing it by hand in the test would have made the test's own claim less readable — and `system_entropy(base=...)`, which takes the same `base` parameter as `entanglement_entropy` for consistency. `Circuit` also grew `system_qubits` / `environment_qubits` properties, which is how the Inspector asks for the split.
+- **`viz.dephasing_panels(theta)` is public**, not a private inner function. It is the whole widget minus the slider, it is worth calling directly in a notebook or a paper, and making it public means the coverage requirement is met by testing behaviour rather than by reaching into a closure.
+- **No `# pragma: no cover` was needed anywhere in this phase.** The plan anticipated one on the `interact` wiring line; in fact `ipywidgets.interact` runs headless under the Agg backend, and the missing-dependency branch is reachable by monkeypatching `sys.modules["ipywidgets"] = None`. Both are covered by real tests.
+- **`viz.bloch` was refactored, not just added to.** Its sphere-drawing body moved into a shared `_draw_bloch(ax, vector)` so the widget's first panel and the standalone figure cannot drift apart.
+- **`pointer_coupling` implements `basis="y"`** as well as x and z, via the H·S† conjugation. The plan mentioned y in passing; it is cheap and it makes the einselection point ("any basis, chosen by the coupling") non-rhetorical.

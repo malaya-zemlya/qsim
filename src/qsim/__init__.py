@@ -28,7 +28,7 @@ everything a real quantum computer would never let you see. The notebooks in
 ``notebooks/`` are the guided path through all of it.
 """
 
-from qsim import errors, gates, viz
+from qsim import decoherence, errors, gates, viz
 from qsim.circuit import Circuit, Op, Qubit, Register
 from qsim.combinators import Block, gate
 from qsim.errors import (
@@ -135,6 +135,7 @@ __all__ = [
     "set_dtype",
     "get_dtype",
     # submodules
+    "decoherence",
     "errors",
     "gates",
     "viz",

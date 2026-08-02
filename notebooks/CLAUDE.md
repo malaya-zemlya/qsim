@@ -40,6 +40,14 @@ and look at them. Overlapping labels are the normal failure mode.
   and the whole row collapses. Kets are everywhere here, so write `\lvert 0\rangle` — it
   is unambiguous LaTeX and contains no pipe at all. (`\|` also survives the parser, but it
   means ‖ in LaTeX, so it only works by accident.) Four tables shipped broken this way.
+- **A cell that displays a live `ipywidgets` widget must be tagged `skip-execution`.**
+  Widgets and a kernel with no browser attached deadlock each other intermittently —
+  measured at 2 hangs in 6 runs of notebook 06, and the cell that hangs is the one
+  *after* the widget, which makes it look like an unrelated bug. `jupyter execute`
+  honours the tag, so tag the cell and tell the reader in markdown to run it themselves.
+  Prefer `ipywidgets.interactive_output` over `ipywidgets.interact` regardless: `interact`
+  also hangs on its own (2 in 4 with a trivial callback) and guesses widgets from the
+  callback's signature.
 - **`ruff check .` lints notebooks.** Cells need no unused imports and must stay under
   100 columns, same as `src/`. Import only the gates a notebook actually uses.
 - **Assign the figure**: `fig = viz.amplitudes(qc)`, not a bare `viz.amplitudes(qc)`.

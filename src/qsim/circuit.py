@@ -241,6 +241,10 @@ class Circuit:
         # The name of the block currently being recorded, stamped onto each op.
         self._current_block = ""
         self._block_calls: list[str] = []
+        # Which qubit ids count as "the environment" — see :meth:`environment`. This
+        # set changes nothing about the physics; it only tells the Inspector which
+        # qubits it should stop tracking when asked for the *system's* point of view.
+        self._is_env: set[int] = set()
         self._rng = np.random.default_rng(seed)
         # A second, independent stream used only by inspect.sample(). Sampling is a
         # simulator cheat, not a physical measurement, so it must not consume draws
@@ -322,6 +326,49 @@ class Circuit:
         if size < 1:
             raise ValueError(f"cannot create a register of {size} qubits; ask for at least 1")
         return Register(tuple(self.alloc(f"{name}{i}" if name else "") for i in range(size)), name)
+
+    def environment(self, count: int = 1, *, name: str = "E") -> Register:
+        """Allocate ``count`` qubits and mark them as *the environment*.
+
+            env = qc.environment(2)
+            dephasing_coupling(q, env[0], theta=np.pi / 3)
+            qc.inspect.system_entropy()      # q, seen without the environment
+
+        **This traces nothing out.** The qubits stay in the state tensor, they stay
+        entangled with everything they touch, and the global state stays perfectly
+        pure — forever. Nothing here is discarded, approximated, or made stochastic.
+
+        All the marking does is answer a question the Inspector would otherwise have
+        to ask you every time: *which qubits are the thing we are studying, and which
+        are the rest of the world?* With that answer on file,
+        :meth:`~qsim.inspector.Inspector.system_density_matrix` and friends can report
+        the system's point of view by default.
+
+        That is the whole of decoherence, and the API is shaped to make it unmissable:
+        decoherence is not something that happens *to* a state. It is what a subsystem
+        looks like when you decline to track the rest of the world. The mixedness lives
+        in the choice of view, not in the qubit — which is exactly why the eraser in
+        ``decoherence.py`` can undo it.
+
+        Marking is not a permission system: any qubit can play the part of an
+        environment, and :func:`~qsim.decoherence.dephasing_coupling` will happily
+        decohere a qubit against an ordinary ancilla. Being an environment is a
+        decision about where you point your attention, so it would be dishonest to
+        make it a property the simulator enforces.
+        """
+        register = self.register(count, name=name)
+        self._is_env.update(q._id for q in register)
+        return register
+
+    @property
+    def system_qubits(self) -> Register:
+        """Every live qubit *not* marked as environment, in allocation order."""
+        return Register(tuple(q for q in self._qubits if q._id not in self._is_env), name="system")
+
+    @property
+    def environment_qubits(self) -> Register:
+        """Every live qubit marked as environment, in allocation order."""
+        return Register(tuple(q for q in self._qubits if q._id in self._is_env), name="environment")
 
     # ---- physical operations ---------------------------------------------------
 
@@ -448,6 +495,7 @@ class Circuit:
         for q in qubits:
             del self._axis_of[q._id]
             self._qubits.remove(q)
+            self._is_env.discard(q._id)
             q._live = False
 
         # Renumber: the survivors keep their relative order and close the gaps.

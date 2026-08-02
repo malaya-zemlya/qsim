@@ -307,6 +307,54 @@ class Inspector:
                 "these qubits, in reverse order."
             )
 
+    # ---- system vs. environment ------------------------------------------------
+
+    def system_density_matrix(self) -> np.ndarray:
+        """The state of everything *not* marked as environment, as a density matrix.
+
+        The companion to :meth:`~qsim.Circuit.environment`. Nothing was traced out when
+        those qubits were allocated; the trace happens here, at the moment you ask a
+        question that presupposes you are only looking at part of the world.
+
+        With no environment marked this is simply the density matrix of the whole
+        circuit — a pure state, entropy zero. Marking an environment and coupling to it
+        is what makes this matrix start to differ from the state vector's own.
+        """
+        return self.reduced_density_matrix(self._circuit.system_qubits)
+
+    def system_entropy(self, base: float = 2.0) -> float:
+        """Entropy of the system once the environment is ignored, in bits.
+
+        This is the honest measure of how much decoherence has happened. It rises from
+        zero as the environment learns about the system, and — because the global state
+        stays pure — it is *exactly* equal to the entropy of the environment (TD7). The
+        information is not gone; it is in the correlations, which is a different thing.
+        """
+        return self.entanglement_entropy(self._circuit.system_qubits, base=base)
+
+    def environment_entropy(self, base: float = 2.0) -> float:
+        """Entropy of the environment once the system is ignored, in bits."""
+        return self.entanglement_entropy(self._circuit.environment_qubits, base=base)
+
+    def coherence(self, q: Qubit) -> float:
+        """How much superposition survives in ``q``: the size of its off-diagonal, |ρ₀₁|.
+
+        A qubit's reduced density matrix has probabilities on the diagonal and
+        **coherences** off it. The diagonal alone is a classical description — "it is 0
+        with probability p, 1 with probability 1−p". Everything that distinguishes a
+        genuine superposition from that coin flip sits in ρ₀₁.
+
+        A fresh |+⟩ gives 0.5, the largest a qubit can have. A coin flip gives 0. The
+        journey between them is decoherence, and no measurement of *this qubit alone*
+        can tell you which end you started from.
+
+        Geometrically it is the Bloch vector's shadow on the equatorial plane:
+        |ρ₀₁| = √(x² + y²) / 2. Decoherence shortens that shadow while leaving the
+        z-component — the populations — untouched.
+        """
+        rho = self.reduced_density_matrix([q])
+        return float(abs(rho[0, 1]))
+
     # ---- single-qubit views ----------------------------------------------------
 
     def bloch_vector(self, q: Qubit) -> tuple[float, float, float]:
