@@ -12,6 +12,13 @@
 6. Part 1(c) is a static two-panel plot, not an animation (animations don't survive `jupyter execute`).
 7. Bonus finding used to close the loop: `|Rx(0.9)|²` is exactly `LAZY(0.189)` from Part 1(c).
 
+**Post-review upgrades (same day), from the spec author's response to the build report:**
+
+- Part 1(b) now carries the **spectral proof**, displayed and asserted: a 2×2 stochastic matrix's second eigenvalue is λ = tr(S) − 1 ∈ [−1, 1] and real, so any stochastic square has λ² ≥ 0 — FLIP's is exactly −1 (no stochastic root; the obstruction is spectral), while on the unit circle −1 has roots ±i and `eig(SX) = {1, i}` carries them. Uniqueness of COIN as its own root is now *demonstrated* by the grid search (exactly 1 hit, next-best residual 2.5e-05), not just claimed.
+- Part 1's fixed-point prose corrected again (the fix's fix): "no continuous path" was false (`LAZY(ε)` is such a path); the true statement is semigroup **time** — COIN at t = ∞, absorbing (per-step decay ratio |1−2ε| asserted at 0.8 to 8.6e-14, distance always > 0), X at finite time on a recurrent orbit (16-step `Rx` return to 1.1e-15).
+- Part 4(c) gains the **null result as pedagogy**: equal `Ry(θ)` on both qubits pins the correlator at exactly 1 across 41 angles (state vector itself moves < 1.2e-16), with the O⊗O invariance one-liner as proof — *then* the counter-rotated sweep.
+- Part 4(d) explains the polarizer factor of two (Poincaré sphere: orthogonal polarizations are antipodal), linked to `quaternions_and_spin`'s half-angle as a *comparison of two mechanisms with the same arithmetic*, not an identification.
+
 Track E, foundations. Buildable after Phase 2.5 (needs blocks, decoherence couplings, `inspect`; does not need QFT or arithmetic).
 
 **Punchline (state in the first markdown cell):** Classical probability theory and quantum mechanics are the same design — states as norm-1 vectors, dynamics as norm-preserving linear maps, composition by tensor product — instantiated on the 1-norm and the 2-norm respectively. Every quantum phenomenon in this notebook is a consequence of that single substitution, and classical probability reappears inside QM as the fixed point of decoherence.
