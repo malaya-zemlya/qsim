@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 300" width="100%" style="max-width:620px">
+  <title>A Mach–Zehnder interferometer</title>
+  <desc>A photon enters at the left, meets beam splitter 1, travels along two arms via
+  mirrors — one arm carrying a phase shifter — and recombines at beam splitter 2 before
+  leaving by port 0 or port 1.</desc>
+  <style>
+    .optic { stroke: #8a8f98; stroke-width: 3; fill: none; }
+    .beam  { stroke: #c33b53; stroke-width: 2; fill: none; }
+    .lead  { stroke: #8a8f98; stroke-width: 1; stroke-dasharray: 3 3; fill: none; }
+    .glass { stroke: #17797c; stroke-width: 2; fill: none; }
+    text   { fill: #8a8f98; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 14px; }
+    .small { font-size: 12px; }
+    .accent { fill: #17797c; }
+  </style>
+  <defs>
+    <marker id="mz-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#c33b53"/>
+    </marker>
+  </defs>
+
+  <!-- beams -->
+  <path class="beam" d="M 60 240 L 150 240" marker-end="url(#mz-arrow)"/>
+  <path class="beam" d="M 150 240 L 450 240"/>
+  <path class="beam" d="M 150 240 L 150 110"/>
+  <path class="beam" d="M 150 110 L 450 110"/>
+  <path class="beam" d="M 450 240 L 450 110"/>
+  <path class="beam" d="M 450 110 L 560 110" marker-end="url(#mz-arrow)"/>
+  <path class="beam" d="M 450 110 L 450 35" marker-end="url(#mz-arrow)"/>
+
+  <!-- optics: 45-degree strokes -->
+  <line class="optic" x1="132" y1="258" x2="168" y2="222"/>
+  <line class="optic" x1="132" y1="128" x2="168" y2="92"/>
+  <line class="optic" x1="432" y1="258" x2="468" y2="222"/>
+  <line class="optic" x1="432" y1="128" x2="468" y2="92"/>
+
+  <!-- phase shifter in the lower arm -->
+  <rect class="glass" x="270" y="222" width="66" height="36" rx="2"/>
+  <text class="accent" x="303" y="245" text-anchor="middle">φ</text>
+
+  <!-- labels -->
+  <text x="56" y="228" text-anchor="start">photon</text>
+  <text class="small" x="150" y="285" text-anchor="middle">beam splitter 1</text>
+  <text class="small" x="450" y="285" text-anchor="middle">mirror</text>
+  <text class="small" x="150" y="80" text-anchor="middle">mirror</text>
+  <text class="small" x="470" y="80" text-anchor="start">beam splitter 2</text>
+  <text class="small" x="300" y="100" text-anchor="middle">arm 1</text>
+  <text class="small" x="215" y="232" text-anchor="middle">arm 0</text>
+  <text x="566" y="115" text-anchor="start">port 0</text>
+  <text x="450" y="25" text-anchor="middle">port 1</text>
+</svg>

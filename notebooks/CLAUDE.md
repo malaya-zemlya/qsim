@@ -12,6 +12,27 @@ covers only the mechanics, which are easy to get wrong.
   field and `nbformat.validate` warns.
 - **Ship with no stored outputs**: empty `outputs`, `execution_count: null`.
 
+## Diagrams
+
+**Never draw apparatus with ASCII art.** It misaligns the moment the font or cell width
+changes — the first version of notebook 05's interferometer was already broken on the day
+it was written. Commit an SVG to `notebooks/figures/` instead and reference it from a
+markdown cell with a relative path:
+
+```markdown
+![A Mach–Zehnder interferometer: a photon meets a beam splitter…](figures/mach-zehnder.svg)
+```
+
+That renders in JupyterLab *and* on GitHub, needs no execution, and diffs as text. Write a
+real `<title>` and `<desc>`, and a descriptive alt text — these are teaching materials.
+
+Colours must work on both light and dark backgrounds, since an `<img>` cannot inherit the
+page's theme: mid-grey `#8a8f98` for apparatus, `#c33b53` for beams and light paths,
+`#17797c` for detectors and annotations. No white fills.
+
+Check the result rather than assuming: render the SVGs on a light *and* a dark background
+and look at them. Overlapping labels are the normal failure mode.
+
 ## Gotchas that have already bitten
 
 - **`ruff check .` lints notebooks.** Cells need no unused imports and must stay under

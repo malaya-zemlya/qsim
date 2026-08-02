@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 300" width="100%" style="max-width:620px">
+  <title>Delayed choice: erasing the which-path record after the fact</title>
+  <desc>The detector couples to the upper arm as before, but a second element further
+  along can undo that coupling. The decision whether to erase is taken after the photon
+  has already passed the detector — and the interference returns if it is erased.</desc>
+  <style>
+    .optic { stroke: #8a8f98; stroke-width: 3; fill: none; }
+    .beam  { stroke: #c33b53; stroke-width: 2; fill: none; }
+    .lead  { stroke: #17797c; stroke-width: 1.5; stroke-dasharray: 4 3; fill: none; }
+    .box   { stroke: #17797c; stroke-width: 2; fill: none; }
+    .maybe { stroke: #17797c; stroke-width: 2; stroke-dasharray: 6 4; fill: none; }
+    text   { fill: #8a8f98; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 14px; }
+    .small { font-size: 12px; }
+    .accent { fill: #17797c; }
+  </style>
+  <defs>
+    <marker id="dc-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#c33b53"/>
+    </marker>
+  </defs>
+
+  <path class="beam" d="M 40 250 L 120 250" marker-end="url(#dc-arrow)"/>
+  <path class="beam" d="M 120 250 L 480 250"/>
+  <path class="beam" d="M 120 250 L 120 150"/>
+  <path class="beam" d="M 120 150 L 480 150"/>
+  <path class="beam" d="M 480 250 L 480 150"/>
+  <path class="beam" d="M 480 150 L 578 150" marker-end="url(#dc-arrow)"/>
+  <path class="beam" d="M 480 150 L 480 96" marker-end="url(#dc-arrow)"/>
+
+  <line class="optic" x1="102" y1="268" x2="138" y2="232"/>
+  <line class="optic" x1="102" y1="168" x2="138" y2="132"/>
+  <line class="optic" x1="462" y1="268" x2="498" y2="232"/>
+  <line class="optic" x1="462" y1="168" x2="498" y2="132"/>
+
+  <!-- the coupling that writes the record -->
+  <rect class="box" x="176" y="34" width="112" height="44" rx="3"/>
+  <text class="accent small" x="232" y="53" text-anchor="middle">record which</text>
+  <text class="accent small" x="232" y="69" text-anchor="middle">arm was taken</text>
+  <path class="lead" d="M 232 78 L 232 150"/>
+
+  <!-- the optional erasure, further along -->
+  <rect class="maybe" x="330" y="34" width="112" height="44" rx="3"/>
+  <text class="accent small" x="386" y="53" text-anchor="middle">erase it?</text>
+  <text class="accent small" x="386" y="69" text-anchor="middle">(decided later)</text>
+  <path class="lead" d="M 386 78 L 386 150"/>
+
+  <text x="36" y="238" text-anchor="start">photon</text>
+  <text class="small" x="170" y="140" text-anchor="middle">arm 1</text>
+  <text class="small" x="180" y="268" text-anchor="middle">arm 0</text>
+  <text x="582" y="155" text-anchor="start">port 0</text>
+  <text class="small" x="480" y="86" text-anchor="middle">port 1</text>
+  <text class="small" x="300" y="292" text-anchor="middle">erase the record and the fringes return; keep it and they stay gone</text>
+</svg>

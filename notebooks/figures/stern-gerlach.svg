@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 270" width="100%" style="max-width:700px">
+  <title>A chain of three Stern–Gerlach filters: z, then x, then z again</title>
+  <desc>Atoms leave an oven, pass a filter along z which blocks spin-down, then a filter
+  along x which blocks half of them, then a filter along z again — which blocks half
+  again, even though the first filter had already made every surviving atom spin-up
+  along z.</desc>
+  <style>
+    .beam    { stroke: #c33b53; stroke-width: 2; fill: none; }
+    .blocked { stroke: #8a8f98; stroke-width: 1.6; stroke-dasharray: 4 4; fill: none; }
+    .magnet  { stroke: #8a8f98; stroke-width: 2; fill: none; }
+    .stop    { stroke: #8a8f98; stroke-width: 2.5; fill: none; }
+    text     { fill: #8a8f98; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px; }
+    .small   { font-size: 11px; }
+    .count   { fill: #17797c; font-size: 12px; font-family: ui-monospace, monospace; }
+  </style>
+  <defs>
+    <marker id="sg-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#c33b53"/>
+    </marker>
+  </defs>
+
+  <!-- oven -->
+  <rect class="magnet" x="20" y="96" width="52" height="38" rx="3"/>
+  <text class="small" x="46" y="120" text-anchor="middle">oven</text>
+  <path class="beam" d="M 72 115 L 122 115"/>
+
+  <!-- three filters -->
+  <rect class="magnet" x="122" y="86" width="58" height="58" rx="3"/>
+  <text x="151" y="112" text-anchor="middle">SG</text>
+  <text x="151" y="130" text-anchor="middle">z</text>
+
+  <rect class="magnet" x="292" y="86" width="58" height="58" rx="3"/>
+  <text x="321" y="112" text-anchor="middle">SG</text>
+  <text x="321" y="130" text-anchor="middle">x</text>
+
+  <rect class="magnet" x="462" y="86" width="58" height="58" rx="3"/>
+  <text x="491" y="112" text-anchor="middle">SG</text>
+  <text x="491" y="130" text-anchor="middle">z</text>
+
+  <!-- surviving beam, straight through -->
+  <path class="beam" d="M 180 105 L 292 105"/>
+  <path class="beam" d="M 350 105 L 462 105"/>
+  <path class="beam" d="M 520 105 L 616 105" marker-end="url(#sg-arrow)"/>
+
+  <!-- blocked outputs -->
+  <path class="blocked" d="M 180 128 L 236 155"/>
+  <line class="stop" x1="238" y1="146" x2="256" y2="164"/>
+  <line class="stop" x1="256" y1="146" x2="238" y2="164"/>
+
+  <path class="blocked" d="M 350 128 L 406 155"/>
+  <line class="stop" x1="408" y1="146" x2="426" y2="164"/>
+  <line class="stop" x1="426" y1="146" x2="408" y2="164"/>
+
+  <path class="blocked" d="M 520 128 L 572 158"/>
+  <line class="stop" x1="574" y1="150" x2="592" y2="168"/>
+  <line class="stop" x1="592" y1="150" x2="574" y2="168"/>
+
+  <!-- counts -->
+  <text class="count" x="236" y="96" text-anchor="middle">2000</text>
+  <text class="count" x="406" y="96" text-anchor="middle">2000</text>
+  <text class="count" x="568" y="96" text-anchor="middle">≈1000</text>
+  <text class="count" x="628" y="152" text-anchor="start">≈500</text>
+
+  <text class="small" x="246" y="188" text-anchor="middle">blocked</text>
+  <text class="small" x="416" y="188" text-anchor="middle">blocked: half</text>
+  <text class="small" x="590" y="196" text-anchor="middle">blocked: half again</text>
+  <text class="small" x="350" y="234" text-anchor="middle">The third filter rejects atoms the first one had already passed — measuring x</text>
+  <text class="small" x="350" y="251" text-anchor="middle">destroyed the z information rather than merely reading it.</text>
+</svg>
