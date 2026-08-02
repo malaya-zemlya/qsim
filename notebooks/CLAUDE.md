@@ -35,6 +35,11 @@ and look at them. Overlapping labels are the normal failure mode.
 
 ## Gotchas that have already bitten
 
+- **A `|` inside `$…$` inside a markdown table silently destroys the table.** The table
+  parser splits on it before MathJax ever sees it, so `| $|0\rangle$ |` becomes two cells
+  and the whole row collapses. Kets are everywhere here, so write `\lvert 0\rangle` — it
+  is unambiguous LaTeX and contains no pipe at all. (`\|` also survives the parser, but it
+  means ‖ in LaTeX, so it only works by accident.) Four tables shipped broken this way.
 - **`ruff check .` lints notebooks.** Cells need no unused imports and must stay under
   100 columns, same as `src/`. Import only the gates a notebook actually uses.
 - **Assign the figure**: `fig = viz.amplitudes(qc)`, not a bare `viz.amplitudes(qc)`.
