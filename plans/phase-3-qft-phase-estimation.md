@@ -1,10 +1,10 @@
 # Phase 3 — QFT and phase estimation
 
-**Read first:** `plans/master-plan.md` (Conventions), `qsim-design.md` §8.1, §8.2, T11–T15 in §9. Requires Phase 2.5 complete. (T17 is deliberately deferred to Phase 5 — it needs the period-finding circuit; the master plan records this deviation.)
+**Read first:** `plans/master-plan.md` (Conventions), `qsim-design.md` §8.1, §8.2, §4.5–§4.6 (the transform/tape layer this phase may lean on), T11–T15 in §9. Requires Phase 2.75 complete. (T17 is deliberately deferred to Phase 5 — it needs the period-finding circuit; the master plan records this deviation.)
 
 **Goal:** the Quantum Fourier Transform as a circuit of H and controlled-phase gates, exact and approximate, plus both flavors of phase estimation. This is the measuring instrument Shor's algorithm reads its answer through.
 
-**Files created:** `src/qsim/algorithms/qft.py`, `src/qsim/algorithms/phase_estimation.py`; `tests/test_qft.py`, `tests/test_acceptance_t11_t15.py`; `notebooks/06-qft-phase-estimation.ipynb`.
+**Files created:** `src/qsim/algorithms/qft.py`, `src/qsim/algorithms/phase_estimation.py`; `tests/test_qft.py`, `tests/test_acceptance_t11_t15.py`; `notebooks/07-qft-phase-estimation.ipynb`. (Notebook numbering follows the master-plan index: 05 is interferometers, 06 is decoherence.)
 
 ---
 
@@ -40,7 +40,7 @@ if swap:
 Required explanatory comments (write them for a reader meeting this for the first time):
 - Why H-then-phases works: after processing qubit j, its state is (|0⟩ + e^{2πi·0.j_j j_{j+1}…j_{n-1}}|1⟩)/√2 — each qubit ends up carrying one binary digit's worth of the input read as a binary *fraction*. Show the binary-fraction notation 0.b₁b₂… = b₁/2 + b₂/4 + … in the docstring.
 - **Bit reversal:** the circuit naturally produces the output with qubit order reversed; the SWAP network fixes it. Keep `swap=True` the default, and the docstring notes you can pass `swap=False` to *see* the reversal (T11's test file demonstrates handling it by hand — design doc requirement).
-- `iqft`: implement as `qft` structure with negated angles and reversed loop order (or, equivalently and preferably for teaching, `qft.adjoint()` internally — but then approx/swap params must round-trip through the adjoint machinery; choose whichever is cleaner in practice and document the equivalence; T12 pins correctness either way).
+- `iqft`: implement as `qft.adjoint()` internally — since Phase 2.75, `Block.adjoint()` returns a real `Block`, and the classical params (`swap`, `approx`) round-trip through the recorded-op transformation, so this is now the preferred route (it *demonstrates* the closed algebra in production code). Keep `iqft` as a named public function regardless — it reads better in phase estimation and Shor's. T12 pins correctness.
 
 Document the two precision facts from design doc §8.1 (phase-register size for Shor; only O(log(t/ε)) distinct angles needed, error ~ t²·2^{−m}) in the docstring, each with a plain-language gloss.
 
@@ -69,7 +69,7 @@ Docstring pitch (no QM assumed): a unitary's eigenvalues all have absolute value
 
 **Unit tests (`test_qft.py`), tests-as-documentation:** qft on |0…0⟩ gives the uniform superposition (every amplitude 1/√2^n — the "all frequencies of nothing" case, comment it); qft on a 1-qubit register is exactly H; `approx=1` keeps only the H's; gate_counts of qft(n) has n(n−1)/2 CPhase gates and n H's (structure test); `semiclassical_phase_estimation` uses exactly one phase qubit (n_qubits check); empty register raises cleanly.
 
-## 4. Notebook — `06-qft-phase-estimation.ipynb` ("Reading frequencies off a quantum state")
+## 4. Notebook — `07-qft-phase-estimation.ipynb` ("Reading frequencies off a quantum state")
 
 1. What you will learn. Classical warm-up: a sampled cosine and `np.fft` finding its frequency (3 cells; the owner knows basic numpy — explain fft output layout briefly).
 2. Amplitudes as a signal: prepare a small register whose amplitudes trace a cosine (test-style state prep is fine here — say so honestly in the markdown: "we're cheating with inspect-level state prep to make a clean picture; Shor's will earn its periodic state").
@@ -82,7 +82,7 @@ Docstring pitch (no QM assumed): a unitary's eigenvalues all have absolute value
 
 ## Definition of done
 
-- T11–T15 + unit tests pass; all earlier tests pass; **100% coverage maintained** (both `swap` branches, `approx` branch, error paths); pyright/ruff clean; notebook 06 executes.
+- T11–T15 + unit tests pass; all earlier tests pass; **100% coverage maintained** (both `swap` branches, `approx` branch, error paths); pyright/ruff clean; notebook 07 executes.
 - T11 contains the convention-documenting comment block; module docstrings meet the pedagogy bar.
 - Report "Decisions made".
 

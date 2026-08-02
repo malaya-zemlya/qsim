@@ -4,7 +4,7 @@
 
 **Goal:** factor 15 and 21 with a fully honest circuit, expose the complete classical+quantum trace in a `ShorResult`, and demonstrate empirically that skipping uncomputation destroys the algorithm (T18).
 
-**Files created:** `src/qsim/algorithms/shor.py`; `tests/test_shor_classical.py`, `tests/test_acceptance_t17_t19.py`, `tests/test_acceptance_t22_t25.py`; `notebooks/07-shor.ipynb`.
+**Files created:** `src/qsim/algorithms/shor.py`; `tests/test_shor_classical.py`, `tests/test_acceptance_t17_t19.py`, `tests/test_acceptance_t22_t25.py`; `notebooks/08-shor.ipynb`. (Notebook numbering follows the master-plan index.)
 
 ---
 
@@ -51,7 +51,7 @@ def shor(N: int, *, a: int | None = None, seed=None, semiclassical=False,
 
 **Semiclassical variant** (`semiclassical=True`): the Griffiths–Niu loop from Phase 3 driving the controlled modular multiplications with one reusable phase qubit — total ≈ n+4 qubits; assert the count in T25. Reuse `semiclassical_phase_estimation` if its Block interface fits controlled-modexp-steps; otherwise inline the loop here and note it.
 
-**The T18 escape hatch:** `_skip_uncompute=True` routes the multiplier's uncompute step (Beauregard's swap-trick step 3, Phase 4 plan §4) into a no-op and passes `_unsafe_skip_check=True` to the ancilla machinery — garbage stays. Keyword is underscore-private and its docstring says it exists only for T18/notebook 07.
+**The T18 escape hatch:** `_skip_uncompute=True` routes the multiplier's uncompute step (Beauregard's swap-trick step 3, Phase 4 plan §4) into a no-op and passes `_unsafe_skip_check=True` to the ancilla machinery — garbage stays. Keyword is underscore-private and its docstring says it exists only for T18/notebook 08.
 
 ## 3. Tests
 
@@ -59,8 +59,8 @@ def shor(N: int, *, a: int | None = None, seed=None, semiclassical=False,
 
 **`test_acceptance_t17_t19.py`:**
 - **T17 (precision):** run find_period(7, 15, seed=fixed) under complex64 and complex128 (`qsim.set_dtype`); compare the phase-register probability distributions just before measurement: peak bins agree to ~1e-7 relative; valley bins (near-zero) differ wildly in relative terms — assert both, per design doc, with the design-doc comment about badly-conditioned outputs being exactly the ones that don't matter. Restore dtype in a fixture finalizer.
-- **T18 (the demonstration test — most important in the suite):** N=15, a=7, seeded. Run once normally, once with `_skip_uncompute=True`. Metric: peak-to-background ratio of the phase-register distribution (max of the 4 expected peak bins over the mean of all other bins). Assert clean-run ratio ≥ 10× the dirty-run ratio. Docstring (required by design doc): this is TD2 in different clothing — the dirty ancillas are an environment that recorded which-path information; the lost peak is lost visibility; see §4.4 and notebook 05.
-- **T19 (entanglement across modexp):** N=15, a=7; entropy between exponent register and the rest: ≈0 before modexp, ≈log2(4)=2 bits after (accept 1.9–2.0 — it saturates near log2 r), and state the design-doc point in the docstring: the algorithm *works by* entangling exponent with work register, then reading the periodicity that entanglement imprints.
+- **T18 (the demonstration test — most important in the suite):** N=15, a=7, seeded. Run once normally, once with `_skip_uncompute=True`. Metric: peak-to-background ratio of the phase-register distribution (max of the 4 expected peak bins over the mean of all other bins). Assert clean-run ratio ≥ 10× the dirty-run ratio. Docstring (required by design doc): this is TD2 in different clothing — the dirty ancillas are an environment that recorded which-path information; the lost peak is lost visibility; see §4.4 and notebook 06.
+- **T19 (entanglement across modexp):** N=15, a=7; entropy between exponent register and the rest: ≈0 before modexp, ≈log2(4)=2 bits after (accept 1.9–2.0 — it saturates near log2 r), and state the design-doc point in the docstring: the algorithm *works by* entangling exponent with work register, then reading the periodicity that entanglement imprints. Sample the during-modexp points with an `on_op` hook (Phase 2.75) rather than hand-splicing the circuit — the hook is exactly the instrument for "watch a quantity evolve as a program runs".
 
 **`test_acceptance_t22_t25.py`:**
 - **T22:** `shor(15, a=7, seed=...)` → factors {3,5}, period 4, `n_qubits == 11`, deterministic under the seed.
@@ -70,7 +70,7 @@ def shor(N: int, *, a: int | None = None, seed=None, semiclassical=False,
 
 Runtime guardrail: T22/T18 runs are ~11 qubits × tens of thousands of gates — target < 30s each; T23 (13 qubits) < 2 min. If exceeded, profile before weakening anything; likely culprits are needless `psi.copy()` in kernels.
 
-## 4. Notebook — `07-shor.ipynb` ("Factoring numbers with interference")
+## 4. Notebook — `08-shor.ipynb` ("Factoring numbers with interference")
 
 The capstone. Structure:
 1. What you will learn; why factoring matters (RSA in two sentences); the honest-circuit promise (quote the §8.3 constraint — and that *this* notebook's circuit keeps it).
@@ -79,13 +79,13 @@ The capstone. Structure:
 4. Watch the comb: `viz.probabilities` of the phase register before measurement — flat, then 4 peaks at multiples of 256/4 = 64. **The design doc calls this the moment Shor's stops being symbol manipulation; give it space.**
 5. From peak to period: measure, continued fractions step by step (reuse the helper's trace), verify r, compute the factors.
 6. When it fails: run the failure modes (measured 0; odd r via another a; a=14's degenerate case) and read the `failure` strings. Probabilistic ≠ broken — retry logic shown.
-7. **The uncomputation demonstration (T18 live):** clean vs `_skip_uncompute=True` distributions side by side; markdown callback to notebooks 04/05 — the garbage register is an environment; this is decoherence self-inflicted. The single most important cell pair in the whole notebook series.
+7. **The uncomputation demonstration (T18 live):** clean vs `_skip_uncompute=True` distributions side by side; markdown callback to notebooks 04 and 06 — the garbage register is an environment; this is decoherence self-inflicted. The single most important cell pair in the whole notebook series.
 8. `shor(21)`; qubit/gate-count table (`gate_counts` for both N); semiclassical variant and its qubit savings.
 9. What you now know / next (Grover — a completely different way to use interference).
 
 ## Definition of done
 
-- All acceptance + unit tests pass; every earlier test passes; **100% coverage maintained** (failure branches, `semiclassical`, `_skip_uncompute`, dtype switch all exercised); pyright/ruff clean; notebook 07 executes in < ~5 min.
+- All acceptance + unit tests pass; every earlier test passes; **100% coverage maintained** (failure branches, `semiclassical`, `_skip_uncompute`, dtype switch all exercised); pyright/ruff clean; notebook 08 executes in < ~5 min.
 - `ShorResult` exposes the full trace; failure strings teach.
 - Report "Decisions made" (semiclassical qubit count, T23 seed/attempts, observed tolerances/timings).
 

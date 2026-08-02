@@ -138,11 +138,14 @@ class Circuit:
     def measure_all(self, reg: Register) -> int: ...
     def reset(self, q: Qubit) -> None: ...
 
-    # Recording
+    # Recording — the history is a tape (§4.6)
     @property
     def history(self) -> list[Op]: ...
     def gate_counts(self) -> dict[str, int]: ...
     def depth(self) -> int: ...
+    def checkpoint(self) -> Checkpoint: ...
+    def rewind(self, mark: Checkpoint) -> None: ...
+    def on_op(self, fn: Callable[[Op, Circuit], None]) -> HookHandle: ...
 
     # Namespaced introspection — see §5
     @property
@@ -324,6 +327,49 @@ pointer_coupling(q, env: Qubit, theta, basis="z") -> None
 Because the environment is still there and still unitary, **the coupling can be uncomputed** and coherence returns exactly. This must be a first-class demo, not a footnote.
 
 It is also the conceptual bridge to §8.3 and test T18: a dirty ancilla *is* an environment, and uncomputation *is* erasure. Decoherence and failed uncomputation are one phenomenon, and a student who meets them in separate phases will not notice. Cross-reference in both directions.
+
+### 4.5 Conjugation: `within` and the closed block algebra
+
+The sandwich $V\,U\,V^\dagger$ — do a basis change, act, undo the basis change — is the single most common composite in quantum programs: `pointer_coupling` is dephasing conjugated by H, the Grover oracle is a controlled-Z conjugated by X's, and the Fourier-space adder (§8.3) is phase rotations conjugated by the QFT. It gets a first-class combinator:
+
+```python
+with qsim.within(H, q):                    # V = H(q), applied now
+    dephasing_coupling(q, e, theta=theta)  # body runs EAGERLY — state inspectable
+                                           # V† emitted here on exit
+```
+
+Semantics, chosen to preserve the eager execution model:
+
+- `within(V, *args, **kwargs)` applies `V` immediately, *capturing* its ops as it does. The body is **not** recorded — it runs eagerly and the state stays watchable between its statements. On scope exit, the captured ops replay reversed and daggered. (Contrast with `control`, which must record its body: "run conditioned on c" is a counterfactual that has to execute *differently*, while "undo V later" only needs V remembered. This is the same asymmetry as PyTorch's tape: `backward()` is a tape operation, `vmap` is a function transform.)
+- `V` is any op-emitting callable — a gate, a `@qsim.gate` block, or a plain function; its qubit arguments identify the circuit. `V` must contain no measurement (nothing irreversible can be undone on exit).
+- If the body raises, `V†` is **not** applied — consistent with the other scopes: never run half a construct on the way out of an error.
+- Conjugation *as a reusable block* is spelled with the existing abstraction mechanism, a `def`:
+
+  ```python
+  @qsim.gate
+  def x_dephasing(q, e, theta):
+      with qsim.within(H, q):
+          dephasing_coupling(q, e, theta=theta)
+  ```
+
+Two algebraic facts, both docstring-worthy and both tested (TT2, TT3): the adjoint of a conjugation inverts only the middle, $(VUV^\dagger)^\dagger = V\,U^\dagger\,V^\dagger$; and control distributes over products, so lifting every op of the sandwich is correct — though $C(VUV^\dagger) = V\,(CU)\,V^\dagger$ whenever V avoids the control, meaning the basis change never *needs* the control. Implement the uniform (correct) lifting; the optimization is optional and, if added, must be state-equivalent (TT3 checks both forms agree).
+
+**Closed algebra requirement.** Individual gates already satisfy it (`T.adjoint().controlled()` returns a gate). Blocks must too: `Block.adjoint()` and `Block.controlled(...)` return `Block`s — named (`bell†`, `C-bell`), chainable, countable, diagrammable — never bare callables. An operation on a block is a block.
+
+### 4.6 The tape: checkpoints, rewind, and hooks
+
+The recorded history *is* an autograd tape, and the correspondence with PyTorch's define-by-run model is exact enough to be a design guide: eager ops with a graph recorded as a side effect; per-op inverse rules in place of per-op gradient rules; `adjoint` as the reverse-mode tape walk; `@qsim.gate` tracing as `fx.trace`. Two tape features follow, with one deep difference: autograd's backward pass needs saved activations, but ours needs **nothing saved** — unitaries destroy no information, so the tape alone suffices. Reversibility is the physics; "no activation cache" is its software shadow.
+
+```python
+mark = qc.checkpoint()          # a position on the tape (plus an allocation fingerprint)
+H(q); CNOT(q, e)
+qc.rewind(mark)                 # execute the suffix's inverses, newest first
+qc.on_op(fn) -> HookHandle      # fn(op, qc) after every executed op; .remove() to detach
+```
+
+- **`rewind` keeps the tape honest.** The inverse gates physically run and are appended to the history; the *state* returns exactly to the checkpoint, the *record* shows how (like an editor's undo appearing in the edit log). The tape is a record of what happened — it is never rewritten. For the same reason there is no fx-style graph mutation anywhere in the library.
+- **`rewind` raises** if the suffix contains a measurement (the one op with no inverse rule — it severs the tape exactly as a non-differentiable op severs an autograd graph; the error message must draw that line and point at the eraser: keep the record coherent and you may rewind through it), or if qubits were allocated or released since the mark, or inside a combinator scope.
+- **Hooks** fire for every executed op, measurements included — which requires the one-funnel fix: `_execute` must route its history append through `_record`, where hooks live. Hooks observe (inspect, collect, plot) but must not emit gates; emitting inside a hook raises. `viz.entropy_trace` (§10) is respecified as a hook client: replay the tape with an entropy hook attached.
 
 ---
 
@@ -528,6 +574,26 @@ Entropy exactly 1 bit is the acceptance criterion for the partial-trace implemen
 
 ---
 
+*Tape and transform tests (Phase 2.75). Lettered separately, like the TB/TD groups.*
+
+**TT1 — `within` equals the hand-built sandwich.** `within(H, q)` around a dephasing coupling produces a state identical (1e-13) to applying H, coupling, H by hand — and identical to `pointer_coupling(basis="x")`, which must itself be reimplemented via `within`.
+
+**TT2 — Adjoint inverts only the middle.** For a block `V U V†` built with `within`: its `.adjoint()`'s recorded op sequence is V, U†, V† (structural assert on op names/order), and running block-then-adjoint returns a random state to fidelity 1 within 1e-13.
+
+**TT3 — Control distributes over the sandwich.** The controlled version of a `within` block matches an independently `np.kron`-built controlled matrix (n ≤ 4), and matches the optimized form V·(CU)·V† with the basis change uncontrolled.
+
+**TT4 — Rewind is exact and honest.** After a random 20-gate block on 5 qubits, `rewind(mark)` restores the state to fidelity 1 within 1e-13, and the history *grows* by the 20 inverse ops — the tape records the undoing rather than pretending nothing happened.
+
+**TT5 — Measurement severs the tape.** `rewind` across a recorded measurement raises `QsimError`; the message must state that measurement is the one operation with no inverse rule, and point to the eraser (TD3) as the coherent alternative.
+
+**TT6 — Allocation pins the tape.** `rewind` across an `alloc` or an ancilla-scope release raises: the axes the suffix's ops refer to must still exist and mean the same thing.
+
+**TT7 — Hooks see everything and touch nothing.** An `on_op` hook fires for every gate *and* every measurement (count them); a hook computing entanglement entropy live reproduces the entropy trace; after `handle.remove()` no further calls arrive; a hook that tries to apply a gate raises.
+
+**TT8 — The block algebra is closed.** `bell.adjoint()` is a `Block` (isinstance), named `bell†`; `bell.adjoint().adjoint()` acts as `bell`; `bell.adjoint().controlled(c)` chains and matches the kron-built reference; `block_counts()` reports the derived names.
+
+---
+
 *Decoherence tests (Phase 2.5). Lettered separately to keep phase order without renumbering.*
 
 **TD1 — Coherence decays with coupling strength.** Prepare $|+\rangle$, apply `dephasing_coupling` at angle $\theta$, assert the Bloch $x$-component equals $\cos(\theta/2)$ to 1e-12 for $\theta \in \{0, \pi/4, \pi/2, 3\pi/4, \pi\}$. At $\theta = \pi$ the Bloch vector is the origin: maximally mixed.
@@ -594,7 +660,7 @@ viz.entropy_trace(qc)                       # entropy vs. gate index, requires r
 viz.circuit(qc)                             # text/matplotlib diagram from history
 ```
 
-`entropy_trace` replays the recorded history from scratch, sampling entropy after each gate. Slow, and that is fine.
+`entropy_trace` replays the recorded history from scratch, sampling entropy after each gate. Slow, and that is fine. Implemented as a tape-hook client (§4.6): re-execute the history on a fresh circuit with an `on_op` entropy hook attached — the plotting is separate from the replaying, and the hook mechanism is the same one users get.
 
 ### 10.1 Jupyter rich display
 

@@ -4,7 +4,7 @@
 
 **Goal:** the two remaining algorithms, plus everything of §10 not built in earlier phases: circuit diagrams from history, the entropy trace, and the interactive widgets. Closes out Phases 0–6; afterwards the master plan's Phase 7/8 planning begins.
 
-**Files created:** `src/qsim/algorithms/grover.py`, `src/qsim/algorithms/deutsch_jozsa.py`; `viz.circuit`, `viz.entropy_trace`, `viz.interact_grover`, `viz.interact_qft_comb` in `viz.py`; `tests/test_grover.py`, `test_deutsch_jozsa.py`, `test_viz_diagrams.py`, `tests/test_acceptance_t20_t21.py`; `notebooks/08-grover-deutsch-jozsa.ipynb`.
+**Files created:** `src/qsim/algorithms/grover.py`, `src/qsim/algorithms/deutsch_jozsa.py`; `viz.circuit`, `viz.entropy_trace`, `viz.interact_grover`, `viz.interact_qft_comb` in `viz.py`; `tests/test_grover.py`, `test_deutsch_jozsa.py`, `test_viz_diagrams.py`, `tests/test_acceptance_t20_t21.py`; `notebooks/09-grover-deutsch-jozsa.ipynb`. (Notebook numbering follows the master-plan index.)
 
 ---
 
@@ -58,7 +58,7 @@ Dead/deallocated qubits: rows end at deallocation (ancilla scopes visibly open a
 
 ## 4. `viz.entropy_trace(qc)`
 
-Design doc §10: replay the recorded history from scratch on a fresh state, sampling `entanglement_entropy` after each gate for a chosen cut (default: each qubit against the rest, plotted as one line per qubit; accept a `cut=` argument for a specific bipartition). Slow is fine (says the design doc). Implementation: build a fresh `Circuit`, re-execute ops one at a time via the Phase 2 `_execute` funnel, inspect between ops. Measurement ops in history replay as *recorded outcomes* (deterministic replay — use the outcome stored in history, projecting accordingly; comment why replaying the coin-flip would desynchronize the trace).
+Design doc §10 and §4.6: replay the recorded history from scratch on a fresh state, sampling `entanglement_entropy` after each gate for a chosen cut (default: each qubit against the rest, plotted as one line per qubit; accept a `cut=` argument for a specific bipartition). Slow is fine (says the design doc). Implementation **as a tape-hook client**: build a fresh `Circuit`, attach an `on_op` hook (Phase 2.75) that appends the entropy of the chosen cut, and re-execute the recorded ops through the normal funnel; the hook collects, the function only plots. This is deliberately the same mechanism users get — the docstring should say "you could write this yourself with `on_op`; here it is, pre-wired." Measurement ops in history replay as *recorded outcomes* (deterministic replay — use the outcome stored in history, projecting accordingly; comment why replaying the coin-flip would desynchronize the trace).
 
 ## 5. Widgets (§10.2 remaining)
 
@@ -75,7 +75,7 @@ Same conventions as `interact_dephasing` (Phase 2.5): lazy ipywidgets import, in
 
 **Unit tests, as documentation:** `phase_oracle` flips exactly one sign (compare state vectors); `diffusion` maps the uniform state to itself (up to global phase — comment what "global phase is unobservable" means); `grover` with `iterations=0` = uniform distribution; `deutsch_jozsa` rejects `mask=0` as balanced-oracle input with a teaching message; `viz.circuit` golden tests — small circuits with exact expected multiline strings (Bell circuit, a controlled block, an ancilla scope; these goldens document the diagram language); `entropy_trace` on the Bell circuit returns [0, 1] after the two gates; widgets' draw functions run headless.
 
-## 7. Notebook — `08-grover-deutsch-jozsa.ipynb` ("Amplifying the right answer")
+## 7. Notebook — `09-grover-deutsch-jozsa.ipynb` ("Amplifying the right answer")
 
 1. What you will learn. Search framing: find 1 marked item among N with ~√N looks — and *why that's the best possible* is a real theorem (state without proof).
 2. The oracle demystified: a minus sign nobody can see (`viz.amplitudes` with phase hue — bar heights identical, one bar's color flipped). Why a phase, not a flag: phases are what interference works on (echo notebook 01 §5).
@@ -87,7 +87,7 @@ Same conventions as `interact_dephasing` (Phase 2.5): lazy ipywidgets import, in
 
 ## Definition of done
 
-- T20, T21 + unit tests pass; the **entire suite T1–T25/TB/TD is green**; **100% coverage**; pyright/ruff clean; notebooks 01–08 all execute (full `uv run jupyter execute notebooks/*.ipynb` — final integration check of the whole series).
+- T20, T21 + unit tests pass; the **entire suite — T1–T25, TB, TI, TT, TD — is green**; **100% coverage**; pyright/ruff clean; notebooks 01–09 all execute (full `uv run jupyter execute notebooks/*.ipynb` — final integration check of the whole series).
 - `viz.circuit` goldens committed; diagrams render sanely for every circuit in the notebooks.
 - Report "Decisions made".
 

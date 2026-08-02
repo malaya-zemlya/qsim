@@ -19,6 +19,7 @@ Neither is secondary. Every phase ships both code and its notebook.
 | 2 | `phase-2-combinators.md` | record mode, `control`, `adjoint`, ancilla scopes, `@qsim.gate` | T8–T10 | 04 |
 | 2.25 | `phase-2.25-interferometers.md` | Mach–Zehnder, complementarity, Elitzur–Vaidman, N-path, Stern–Gerlach | TI1–TI4 | 05 |
 | 2.5 | `phase-2.5-decoherence.md` | environment qubits, noise couplings, quantum eraser | TD1–TD7 | 06 |
+| 2.75 | `phase-2.75-tape-and-transforms.md` | `within` conjugation, closed block algebra, checkpoint/rewind, op hooks; fixes D1–D3 | TT1–TT8 | 04 & 06 extended |
 | 3 | `phase-3-qft-phase-estimation.md` | QFT, approximate QFT, phase estimation, semiclassical PE | T11–T15 | 07 |
 | 4 | `phase-4-arithmetic.md` | reversible adders, modular arithmetic, modexp | T16 | — |
 | 5 | `phase-5-shor.md` | Shor's algorithm end-to-end, T18 demonstration | T17–T19, T22–T25 | 08 |
@@ -28,6 +29,7 @@ Phases run strictly in order. Two deliberate deviations from the design doc:
 
 - **T17 (precision comparison) is built in Phase 5, not Phase 3**, because it needs the period-finding circuit that only exists after Phase 4. The design doc's phase list assigned it to Phase 3; these plans override that.
 - **Phase 2.25 (interferometers) was added after Phase 2 shipped**, at the owner's request, and it pushed every later notebook number up by one. It needs no new library machinery — a Hadamard *is* a 50/50 beam splitter — and it sets up decoherence directly, since a which-path detector is an environment qubit by another name.
+- **Phase 2.75 (tape and transforms) was added after Phase 2.5 shipped**, from an owner-driven API design discussion (PyTorch's define-by-run as the model: eager execution, with the recorded history as a user-visible tape). It adds design doc §4.5–§4.6 (`within`, `checkpoint`/`rewind`, `on_op` hooks, `Block`-returning `adjoint`/`controlled`) and fixes three deviations found by auditing shipped code against that design (listed as D1–D3 in its plan). No notebook of its own — it extends notebooks 04 and 06.
 
 Phases 7 (quantum trajectories, error correction, quantum Darwinism, Trotterized Ising — "emergence of the classical") and 8 (density-matrix backend) are deliberately **not planned yet**. Their plans get written when Phase 6 is done, informed by the real codebase. The design doc §11 sketches both.
 

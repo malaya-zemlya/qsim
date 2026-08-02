@@ -12,7 +12,7 @@
 
 The design doc asks for two things that come from different papers: Cuccaro ripple-carry adders (Toffoli-based, "school addition") *and* Beauregard's 2n+3-qubit Shor construction — but Beauregard is built on Draper's *Fourier-space* adder, not Cuccaro's. Resolution, to present to the owner in plain terms:
 
-> There are two ways to build a reversible adding machine. **Ripple-carry (Cuccaro)** is binary school addition: walk bit by bit, carry in hand — completely transparent, every step inspectable, but it needs extra qubits and Shor-on-15 lands around 20 qubits (runs in maybe a minute, not milliseconds). **Fourier-space (Draper)** first runs the register through the QFT, where adding a number becomes just phase rotations — elegant, directly reuses what notebook 06 taught, and gets Shor-on-15 down to the design doc's 11 qubits — but "addition as rotation" is harder to eyeball. Recommendation: **build both.** Cuccaro is the teaching adder and the T16 workhorse; Draper is what modexp/Shor's run on (matching the design doc's qubit counts). T24's honesty check then counts 3-qubit gates of either kind (Toffoli or doubly-controlled phase).
+> There are two ways to build a reversible adding machine. **Ripple-carry (Cuccaro)** is binary school addition: walk bit by bit, carry in hand — completely transparent, every step inspectable, but it needs extra qubits and Shor-on-15 lands around 20 qubits (runs in maybe a minute, not milliseconds). **Fourier-space (Draper)** first runs the register through the QFT, where adding a number becomes just phase rotations — elegant, directly reuses what notebook 07 taught, and gets Shor-on-15 down to the design doc's 11 qubits — but "addition as rotation" is harder to eyeball. Recommendation: **build both.** Cuccaro is the teaching adder and the T16 workhorse; Draper is what modexp/Shor's run on (matching the design doc's qubit counts). T24's honesty check then counts 3-qubit gates of either kind (Toffoli or doubly-controlled phase).
 
 Everything below assumes that recommendation is accepted; if the owner chooses otherwise, stop and revise this plan.
 
@@ -51,7 +51,16 @@ def phi_add(reg: Register, c: int) -> None
         Phase(q, theta=2 * np.pi * c / 2 ** (len(reg) - j))
 ```
 
-(Verify the exponent against the project's MSB-first convention and the `swap=False` layout when implementing — derive it in a comment from the QFT definition rather than trusting this sketch.) Subtraction = `phi_add.adjoint()` (angles negate — Phase 2 machinery). Controlled and doubly-controlled versions come free from `with control(...)`.
+(Verify the exponent against the project's MSB-first convention and the `swap=False` layout when implementing — derive it in a comment from the QFT definition rather than trusting this sketch.) Subtraction = `phi_add.adjoint()` (angles negate; a real `Block` since Phase 2.75). Controlled and doubly-controlled versions come free from `with control(...)`.
+
+**Use `qsim.within` for the Fourier-space envelope wherever the pattern is a clean sandwich** — e.g. a run of phase-additions between one QFT and its inverse is written
+
+```python
+with qsim.within(qft, reg, swap=False):
+    ...phi_add calls...
+```
+
+so the code's *shape* says "addition conjugated by the QFT" (this is the giant conjugation the Phase 2.75 design flagged). Where Beauregard's sequence deliberately breaks the sandwich mid-flight — the modular adder leaves Fourier space at steps 3–5 to read the sign bit, then re-enters — keep explicit `qft`/`iqft` calls and say in a comment *why* `within` does not apply there: the exit is not an undo, it is part of the algorithm.
 
 ## 3. Layer 2 — modular adder (Beauregard, arXiv:quant-ph/0205095 §2.2)
 
@@ -74,7 +83,7 @@ def phi_add(reg: Register, c: int) -> None
 9. (ctrl-)phi_add(reg, c)                # restore reg = (reg+c) mod N
 ```
 
-The uncompute of `anc` is the pedagogical jewel of this phase — the comment must say this is the same dirty-ancilla physics as notebook 04/05, *inside* a production circuit. Wrap the whole thing's ancilla use in `with qc.ancilla(1)` where the call pattern allows, so the Phase 2 verifier actually audits Beauregard's uncomputation at runtime. (If scope plumbing through nested blocks fights the combinator design, allocate `anc` explicitly and `inspect.assert_zero` it after — but report that compromise.)
+The uncompute of `anc` is the pedagogical jewel of this phase — the comment must say this is the same dirty-ancilla physics as notebooks 04 and 06, *inside* a production circuit. Wrap the whole thing's ancilla use in `with qc.ancilla(1)` where the call pattern allows, so the Phase 2 verifier actually audits Beauregard's uncomputation at runtime. (If scope plumbing through nested blocks fights the combinator design, allocate `anc` explicitly and `inspect.assert_zero` it after — but report that compromise.)
 
 ## 4. Layer 3 — controlled modular multiplier and modexp
 

@@ -16,7 +16,7 @@ Directory-scoped notes live in `src/qsim/CLAUDE.md`, `tests/CLAUDE.md` and `note
 
 ## Build workflow
 
-Work proceeds phase by phase (0 → 1 → 1.5 → 2 → 2.5 → 3 → 4 → 5 → 6; phases 7/8 unplanned until 6 ships). Before building any phase's public API, **present its interface to the owner as short usage examples and get approval** — this review step is mandatory, per the master plan. One commit per phase.
+Work proceeds phase by phase (0 → 1 → 1.5 → 2 → 2.25 → 2.5 → 2.75 → 3 → 4 → 5 → 6; phases 7/8 unplanned until 6 ships). Before building any phase's public API, **present its interface to the owner as short usage examples and get approval** — this review step is mandatory, per the master plan. One commit per phase.
 
 **Record the outcome back into the phase plan, in the same commit** (master plan step 5). Rewrite its "Interface decisions to review" section as *resolved* — each decision with the answer and its one-line reason — and add a "Deviations from this plan" section for anything built differently from what the plan specified. The plans are this project's documentation: they carry the *why* behind a decision, which code cannot hold and a commit message buries. A plan left in the future tense after its phase has shipped lies to the next reader.
 
@@ -51,6 +51,7 @@ uv run jupyter lab               # interactive use
 
 - The n-qubit state is one `np.ndarray` of shape `(2,)*n`; **the axes are the tensor factors of the Hilbert space** — this identification is the central pedagogical object. `state.py` holds pure kernel functions over arrays; `circuit.py` owns the state, allocation table, and history; gates are module-level callables in `gates.py` that resolve their circuit from qubit handles.
 - Execution is **eager** (gates run immediately) except inside combinator scopes (`control`, `adjoint`, `@qsim.gate` blocks), where ops are recorded, transformed, then executed (`combinators.py`). Controlled gates are implemented by *slicing the control axes*, not by bigger matrices.
+- The recorded history is a **tape**, PyTorch-style (design doc §4.5–§4.6, Phase 2.75): `qsim.within(V, ...)` runs V, runs its body *eagerly*, then undoes V; `qc.checkpoint()`/`qc.rewind()` undo by executing inverses — the tape is honest, appended-to, never rewritten; `qc.on_op()` hooks observe every executed op (measurements included) and may not emit gates. The block algebra is closed: `Block.adjoint()`/`Block.controlled()` return `Block`s, like gates return gates. `rewind` refuses across measurements (severed tape) and allocation changes.
 - Everything impossible on real hardware lives behind `qc.inspect` (module `inspector.py` — named that to avoid shadowing stdlib `inspect`). The namespace boundary is itself pedagogy: everything inside it is cheating.
 - Ancilla scopes **numerically verify** clean uncomputation on exit (`DirtyAncillaError`); decoherence (`decoherence.py`) is unitary coupling to marked environment qubits that are never traced out — the reduced view is a choice made by the Inspector, not an operation on the state.
 - Physics framing throughout: the classical world *emerges from* the quantum one (decoherence, einselection) — prefer that orientation in explanations over "quantum weirdness added to classical".
