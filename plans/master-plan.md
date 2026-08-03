@@ -71,6 +71,10 @@ The project owner — the person who will read every line of this code and every
 - **Error messages teach.** `NoCloningError` explains the no-cloning theorem; `DirtyAncillaError` explains why leftover entanglement destroys interference. The design doc gives the required content; write full sentences.
 - **Notebooks are prose-first.** A notebook cell pattern of (markdown explaining the idea) → (small code cell) → (markdown interpreting the output) throughout. Target roughly 60% markdown by volume. Each notebook opens with "What you will learn" and closes with "What you now know" + pointers to the next notebook.
 
+### Greenfield policy (owner-set, 2026-08-02)
+
+This is an initial greenfield project: there is no legacy code and no audience that has already read part of the course. **Consistency and clarity at first read are paramount, and backward compatibility carries zero weight.** When an API improves, sweep *every* call site — library, tests, course notebooks, demo notebooks — to the new idiom in the same phase; never leave old and new spellings coexisting for a future reader to puzzle over. "It still works" is not a reason to keep the old form anywhere the reader will see it.
+
 ### Code style
 
 - Python 3.14, type hints throughout, `uv run pyright` must pass with zero errors (configuration set in Phase 0).
