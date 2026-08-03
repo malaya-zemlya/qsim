@@ -84,6 +84,9 @@ with adjoint(): dephasing_coupling(q, env, π)   # -> raises EscapedQubitError
 ```
 Narrative: FAPP-irreversibility vs in-principle (Bell), horizons as the one non-movable cut (Bousso–Susskind), and the honest caveats (observer-dependence of horizons; Page-curve results). The eraser of B2 fails here not with a wrong answer but with an exception — the API distinction *is* the philosophical distinction.
 
+### B6 — `coined_walk_decoherence.ipynb` *(owner request, added after E0)*
+A coined quantum walk on a cycle with the coin dephased at strength θ every step: plot σ(t) and watch the fitted spreading exponent slide from 1 (ballistic) to ½ (diffusive) as θ goes 0 → π. Three facts in one figure: the N-vs-N² transport gap behind quantum-search speedups, the Khintchine/CLT fact (random signs add in quadrature, amplitudes add linearly), and the decoherence dial — with the L1 limit *emerging dynamically* rather than by construction (cross-link E0: the fully dephased Hadamard coin is literally the COIN matrix, |H|² row by row). Shift = multi-controlled-X increment block, decrement = its adjoint; env qubit per step kept, so θ=π is *exactly* simple random walk (σ² = t asserted at 1e-9). Honesty note required: any θ>0 is asymptotically diffusive; the exponent slide is the crossover viewed through a fixed window. ~5–6 position qubits + coin + ~12 env (time steps beat position space; deviation from the requested ~8 recorded).
+
 ---
 
 ## Track C — Interference at work (after Phase 3)
