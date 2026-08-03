@@ -4,9 +4,14 @@ The owner's `qsim-demo-notebooks.md` (repo root) is the authoritative content pl
 
 ## How demos relate to the numbered course
 
-- The numbered series (`notebooks/01-…` … `09-…`) is the *course*: a guided sequence, prose-first, each building on the last.
-- Demos live in **`notebooks/demos/`**, named as in the owner's doc (`one_qubit_playground.ipynb`, …), prefixed by track letter only in the doc, not the filename. They are *exhibits*: self-contained, one punchline each, stated in the first cell.
+**The owner's policy, and it governs: lectures versus seminars.** The numbered notebooks are the lectures — the main material, the thing being taught. The demos are the seminars — supplemental, elucidating, optional.
+
+The whole content of that distinction is which way dependency is allowed to run:
+
+- The numbered series (`notebooks/01-…` … `09-…`) is the *course*: a guided sequence, prose-first, each building on the last. **A reader who never opens a single demo must still get the complete argument.** Nothing in a numbered notebook may be load-bearing on a demo — no course notebook defers a claim it goes on to rely on, and none says "the explanation is over there".
+- Demos live in **`notebooks/demos/`**, named as in the owner's doc (`one_qubit_playground.ipynb`, …), prefixed by track letter only in the doc, not the filename. They are *exhibits*: self-contained, one punchline each, stated in the first cell. They may lean on the course as heavily as they like.
 - Overlap with the course is expected and acceptable — same physics, different format. A demo may link to the course notebook that teaches its background, and should, in its opening cell.
+- The reverse link — course → demo — is allowed and welcome, but it is always an **optional detour, never a hand-off**. Phrase it so the reader can skip it without losing the thread, name the thing as a demo so its status is visible, and say what it does: *"The demo **[quaternions_and_spin](../notebooks/demos/quaternions_and_spin.ipynb)** derives the half-angle from a pair of mirrors."* Do not phrase it as an apology for the lecture: a lecture that states a result and leaves the derivation to a seminar is doing its job, not falling short of it.
 
 ## Conventions (additive to master-plan Conventions, demos only)
 

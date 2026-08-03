@@ -4,6 +4,19 @@ Pedagogy rules are binding and live in `plans/master-plan.md` → "Audience and 
 (~60% markdown, concept before code, every QM term introduced at first use). This file
 covers only the mechanics, which are easy to get wrong.
 
+## Lectures and seminars
+
+The numbered notebooks here are the **lectures**: the main material. `demos/` holds the
+**seminars**: supplemental, elucidating, optional. That fixes the direction of dependency,
+and it is the owner's policy — `plans/demos-track.md` states it in full.
+
+A reader who never opens a demo must still get the complete argument, so **nothing in a
+numbered notebook may be load-bearing on a demo.** A course → demo link is an optional
+detour, never a hand-off: name it as a demo, say what it does, and let the reader skip it.
+A lecture that states a result and leaves the derivation to a seminar is doing its job —
+don't phrase the link as though the lecture were falling short. Demos may lean on the
+course as hard as they like, and should link back for background in their opening cell.
+
 ## Building a notebook
 
 - **Never hand-write `.ipynb` JSON.** Write a Python script (in the scratchpad, not the
