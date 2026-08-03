@@ -91,7 +91,7 @@ def test_probabilities_can_be_capped_at_the_top_few(qc: Circuit) -> None:
 def test_the_bloch_plot_reports_the_vector_length_in_its_title(qc: Circuit) -> None:
     a = qc.alloc()
     H(a)
-    fig = viz.bloch(qc, a)
+    fig = viz.bloch(a)
 
     assert "length 1.00" in fig.axes[0].get_title()
     plt.close(fig)
@@ -99,7 +99,7 @@ def test_the_bloch_plot_reports_the_vector_length_in_its_title(qc: Circuit) -> N
 
 def test_an_entangled_qubit_plots_as_a_zero_length_vector(bell_pair) -> None:
     qc, a, _ = bell_pair
-    fig = viz.bloch(qc, a)
+    fig = viz.bloch(a)
     assert "length 0.00" in fig.axes[0].get_title()
     plt.close(fig)
 
@@ -167,7 +167,7 @@ def test_the_html_is_self_contained(bell_pair) -> None:
 def test_every_plot_survives_a_single_qubit_circuit(qc: Circuit) -> None:
     """Edge case: one qubit, two bars, and a Bloch sphere."""
     a = qc.alloc()
-    for fig in (viz.amplitudes(qc), viz.probabilities(qc), viz.bloch(qc, a)):
+    for fig in (viz.amplitudes(qc), viz.probabilities(qc), viz.bloch(a)):
         assert fig is not None
         plt.close(fig)
 

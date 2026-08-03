@@ -161,7 +161,10 @@ def test_within_inside_a_block_is_recorded_as_part_of_it(qc: Circuit) -> None:
     flip_in_x(q)
 
     assert [op.block for op in qc.history] == ["flip_in_x"] * 3
-    assert qc.block_counts() == {"flip_in_x": 1}
+    # The conjugation is counted symmetrically, both halves (Phase 3's P7): V is the
+    # named gate H, so the tally names H going in and H† coming out. The ops themselves
+    # stay stamped with the enclosing block, which is where they really came from.
+    assert qc.block_counts() == {"flip_in_x": 1, "H": 1, "H†": 1}
     # H Z H is X: the block flipped the qubit, spelled in the other basis.
     assert qc.inspect.probabilities() == pytest.approx([0.0, 1.0])
 

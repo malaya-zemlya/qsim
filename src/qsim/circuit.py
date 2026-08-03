@@ -163,6 +163,27 @@ class Qubit:
         """The qubit's label, used in diagrams and error messages."""
         return self._name
 
+    @property
+    def circuit(self) -> Circuit:
+        """The circuit whose axis this handle names.
+
+        Bookkeeping, not physics — and note carefully that this is *not* a way to reach
+        the qubit's state, because there is no such thing (see the class docstring
+        above). It answers "which joint state do you belong to", which every gate has
+        always had to ask: ``H(q)`` finds its circuit exactly this way, which is why you
+        never have to tell it.
+
+        It is public because blocks need it. A block receives qubit handles and nothing
+        else, so before this property existed, any block that wanted to open a scope had
+        to be handed a redundant circuit argument that its own qubits already knew::
+
+            @qsim.gate
+            def controlled_thing(c: Qubit, t: Qubit) -> None:
+                with c.circuit.control(c):      # not: def controlled_thing(qc, c, t)
+                    X(t)
+        """
+        return self._circuit
+
     def __copy__(self) -> Qubit:
         raise NoCloningError(
             f"cannot copy {self._name}. This is the no-cloning theorem: there is no "
@@ -212,6 +233,25 @@ class Register(Sequence[Qubit]):
     def name(self) -> str:
         """The register's label."""
         return self._name
+
+    @property
+    def circuit(self) -> Circuit:
+        """The circuit these qubits belong to — see :attr:`Qubit.circuit`.
+
+        Raises if the register is empty. A ``Register`` is a list of handles and
+        nothing more; with no handles there is no circuit to name.
+        """
+        if not self._qubits:
+            raise QsimError(
+                "an empty register cannot say which circuit it belongs to. A Register "
+                "is an ordered list of qubit handles and nothing else — it has no "
+                "identity apart from them — so with no handles there is nothing to "
+                "ask. An empty register usually arrives from a slice that selected "
+                "nothing (`reg[3:3]`) or from a block called with a register it then "
+                "narrowed to zero qubits. Pass a qubit, or a register with at least "
+                "one qubit in it."
+            )
+        return self._qubits[0]._circuit
 
     @overload
     def __getitem__(self, index: int) -> Qubit: ...
@@ -434,6 +474,25 @@ class Circuit:
         self._is_env.update(q._id for q in register)
         return register
 
+    def environment_qubit(self, *, name: str = "E") -> Qubit:
+        """Allocate **one** qubit and mark it as environment. See :meth:`environment`.
+
+            e = qc.environment_qubit()
+            dephasing_coupling(q, e, theta=np.pi / 3)
+
+        The same split as :meth:`alloc` versus :meth:`alloc_many`: a function returns
+        one kind of thing, so no caller has to unpack a container it never wanted. Every
+        coupling in ``decoherence.py`` except the depolarizing one takes a single
+        environment qubit, and ``qc.environment(1)[0]`` was the shape every call site
+        wrote before this existed.
+
+        The qubit is named exactly ``name`` — ``E``, not ``E0``, since there is no
+        second one to distinguish it from.
+        """
+        qubit = self.alloc(name)
+        self._is_env.add(qubit._id)
+        return qubit
+
     @property
     def system_qubits(self) -> Register:
         """Every live qubit *not* marked as environment, in allocation order."""
@@ -483,7 +542,13 @@ class Circuit:
         return counts
 
     def block_counts(self) -> dict[str, int]:
-        """How many times each ``@qsim.gate`` block was called."""
+        """How many times each named composite was invoked.
+
+        Every ``@qsim.gate`` block call is counted under its name, derived names
+        included (``bell†``, ``C-bell``). A :func:`~qsim.combinators.within` scope also
+        counts its basis change here, once as ``V`` and once as ``V†``, so a
+        conjugation appears in the tally as the symmetric thing it is.
+        """
         counts: dict[str, int] = {}
         for name in self._block_calls:
             counts[name] = counts.get(name, 0) + 1

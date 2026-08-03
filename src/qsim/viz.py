@@ -104,20 +104,25 @@ def probabilities(
     return fig
 
 
-def bloch(qc: Circuit, q: Qubit, *, figsize: tuple[float, float] = (4.0, 4.0)) -> Any:
+def bloch(q: Qubit, *, figsize: tuple[float, float] = (4.0, 4.0)) -> Any:
     """Draw one qubit's Bloch vector inside the Bloch sphere. Returns the figure.
+
+        fig = viz.bloch(q)
 
     The arrow's length tells you how pure the qubit is: length 1 means it has a state
     of its own, and anything shorter means it is entangled with something else or
     otherwise mixed. Length 0 — an arrow at the origin — is a qubit about which
     nothing whatsoever can be known locally, which is what half of a Bell pair looks
     like.
+
+    The circuit is resolved from the handle (``Qubit.circuit``), the same way gates do
+    it: ``H(q)`` is never written ``H(qc, q)``, so neither is this.
     """
     import matplotlib.pyplot as plt
 
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(projection="3d")
-    x, y, z = qc.inspect.bloch_vector(q)
+    x, y, z = q.circuit.inspect.bloch_vector(q)
     _draw_bloch(ax, (x, y, z))
     length = float(np.sqrt(x * x + y * y + z * z))
     ax.set_title(f"{q.name} — vector length {length:.2f} (1 = pure)", y=1.02)

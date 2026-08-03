@@ -32,6 +32,7 @@ first.
 """
 
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 from qsim.circuit import Op, Qubit, Register
@@ -178,6 +179,15 @@ class WithinScope:
     -----
     - ``V`` is any op-emitting callable — a gate, a ``@qsim.gate`` block, or a plain
       function — and its qubit arguments are how the scope finds the circuit.
+    - **A named V is counted twice, once per half.** If V has a ``.name`` — every gate
+      and every ``@qsim.gate`` block does — then ``block_counts()`` reports both
+      ``name`` and ``name†`` after the scope closes, matching the ``bell†`` naming that
+      ``Block.adjoint()`` already uses. So a conjugation shows up in the tally as the
+      symmetric thing it is, instead of the basis change appearing once and its undo
+      not at all. A plain function or lambda has no ``.name`` and stays unstamped: qsim
+      will not invent a name for something the language did not name, and ``<lambda>``
+      in a gate tally helps nobody. That is the boundary — if you want a conjugation
+      counted, wrap V in a ``def`` and decorate it.
     - ``V`` may not measure. The whole construct rests on being able to undo V on the
       way out, and measurement is the one operation that cannot be undone.
     - If the body raises, **V† is not applied**: never run half a construct on the way
@@ -199,6 +209,10 @@ class WithinScope:
         self._kwargs = kwargs
         self._circuit: Circuit | None = None
         self._v_ops: list[Op] = []
+        # Gates and Blocks both carry ``.name``; plain functions carry ``__name__`` and
+        # not ``.name``, so this attribute is exactly the "did a human name this?" test
+        # the stamping rule needs. See the class docstring.
+        self._name: str = getattr(v, "name", "")
 
     def __enter__(self) -> None:
         circuit = _circuit_of(self._args, message=_WITHIN_NEEDS_A_QUBIT)
@@ -225,6 +239,13 @@ class WithinScope:
                 )
         self._v_ops = v_ops
 
+        # A Block counts its own call while running, so counting it again here would
+        # report `bell` twice for one conjugation. A bare gate counts nothing on its
+        # own, so the forward half of `within(H, q)` is tallied here instead — leaving
+        # both spellings symmetric with the `name†` added on the way out.
+        if self._name and not isinstance(self._v, Block):
+            circuit._block_calls.append(self._name)
+
         # Emit V now. If an enclosing scope is recording, these land in *its* buffer,
         # which is exactly right: a surrounding control or adjoint then sees V, body,
         # V† as three ordinary stretches of ops and transforms all of them uniformly.
@@ -239,8 +260,20 @@ class WithinScope:
             # mid-construct and the user needs to see it that way to debug. Same rule
             # as the recording scopes, which drop their buffers on an exception.
             return False
+
+        if self._name:
+            circuit._block_calls.append(f"{self._name}†")
+        # Stamp the undo ops only when V was a Block, because only then do the forward
+        # ops carry V's own name in `op.block` and the two halves can match. A bare
+        # gate's ops are stamped with whichever block is being recorded *around* the
+        # scope, and overwriting that on one half alone would misreport where those
+        # gates came from.
+        undo_block = f"{self._name}†" if isinstance(self._v, Block) else ""
         for op in reversed(self._v_ops):
-            circuit._emit(op.gate.adjoint_op(op))
+            undo = op.gate.adjoint_op(op)
+            if undo_block:
+                undo = replace(undo, block=undo_block)
+            circuit._emit(undo)
         return False
 
 

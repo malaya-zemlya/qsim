@@ -183,13 +183,73 @@ class Inspector:
         measurement destroys the state. Sampling repeatedly from an intact state is
         the cheat.
 
-        Draws come from a separate random stream, so calling this never changes what
-        a subsequent ``qc.measure()`` returns: adding a sample() call to a seeded
-        notebook cannot silently rewrite the measurements below it.
+        Two facts about the randomness, both deliberate and both worth relying on.
+
+        **Sampling is reproducible.** On a circuit built with ``Circuit(seed=...)``,
+        the same seed and the same sequence of calls give byte-identical ``Counter``s,
+        every run, on every machine. A ``sample()`` in a notebook is therefore a number
+        you can write prose about — and if it changes, something upstream of it really
+        did change.
+
+        **Sampling draws from its own stream.** The draws come from
+        ``Circuit._sample_rng``, which is separate from the stream ``qc.measure()``
+        uses, so calling this never shifts a subsequent measurement's outcome. Adding a
+        ``sample()`` line halfway down a seeded notebook cannot silently rewrite every
+        measurement below it. The two are separate because they are different kinds of
+        thing: a measurement is a physical event in the circuit's history, and a sample
+        is a question asked *about* the circuit that leaves no trace on it.
         """
         n = self._circuit.n_qubits
         outcomes = self._circuit._sample_rng.choice(2**n, size=shots, p=self.probabilities())
         return Counter(format(int(o), f"0{n}b") for o in outcomes)
+
+    def marginal(self, subset: Sequence[Qubit]) -> np.ndarray:
+        """The probability distribution over just ``subset``'s outcomes.
+
+            qc.inspect.marginal([q])        # array([P(q reads 0), P(q reads 1)])
+            qc.inspect.marginal([a, b])     # array([P(00), P(01), P(10), P(11)])
+
+        The result is indexed MSB-first **in the order you gave**: ``subset[0]`` is the
+        most significant bit of the index. That is the same convention the whole library
+        uses, applied to the little register you asked about rather than to the circuit
+        as a whole. So ``marginal([b, a])`` is ``marginal([a, b])`` with its two axes
+        swapped — a different array, describing the same physics read in the other
+        order.
+
+        **Why this method exists.** ``probabilities()[0]`` *reads* like "the probability
+        that qubit 0 comes out 0". It is not. It is the probability of the single basis
+        state |00…0⟩ — every qubit in the circuit reading zero at once. For half a Bell
+        pair the two numbers differ by a factor of two; for a ten-qubit register they
+        differ by a factor of hundreds. ``marginal([q])[0]`` is the number that sentence
+        actually describes.
+
+        Nothing is collapsed and nothing is assumed about which qubits are "the system":
+        environment qubits are included when, and only when, you list them.
+        """
+        axes = self._axes(subset)
+        if len(set(axes)) != len(axes):
+            raise ValueError(
+                "the same qubit was listed twice in a marginal. A marginal is a "
+                "distribution over one outcome per qubit, so a repeated qubit would "
+                "need two independent outcomes for one axis — and a qubit has one "
+                "outcome, not two. List each qubit once."
+            )
+        psi = self._circuit._psi
+        # |amplitude|^2 for every basis state, still shaped (2,)*n — one axis per qubit.
+        probs = np.abs(psi) ** 2
+        # Summing a probability array over an axis is marginalizing that qubit away:
+        # "whatever it turned out to be, add up both cases". Doing it for every qubit
+        # *not* in the subset leaves the joint distribution of the ones that are.
+        complement = tuple(axis for axis in range(psi.ndim) if axis not in axes)
+        reduced = probs.sum(axis=complement)
+        # The surviving axes come out in increasing axis order, which need not be the
+        # order the caller listed them in. Permute them into the requested order: the
+        # caller's i-th qubit sits at position `ascending.index(axes[i])` of `reduced`.
+        ascending = sorted(axes)
+        reduced = np.transpose(reduced, [ascending.index(axis) for axis in axes])
+        # C-order flatten walks the last axis fastest, so subset[0] varies slowest —
+        # which is what "subset[0] is the most significant bit" means as code.
+        return reduced.reshape(-1)
 
     # ---- subsystems ------------------------------------------------------------
 
@@ -297,14 +357,19 @@ class Inspector:
         leftover = 1.0 - self._probability_all_zero(self._axes(subset))
         if leftover > tol:
             names = ", ".join(q.name for q in subset)
+            # Agree in number with however many qubits were actually named. "anc0 are
+            # not in |0>" is a small thing to get wrong and a distracting thing to read
+            # at the exact moment the reader is trying to understand uncomputation.
+            one = len(subset) == 1
             raise DirtyAncillaError(
-                f"{names} are not in |0>: probability {leftover:.3g} of finding a 1. "
+                f"{names} {'is' if one else 'are'} not in |0>: probability "
+                f"{leftover:.3g} of finding a 1. "
                 "Scratch qubits must be uncomputed back to |0> before release, not "
                 "merely ignored. Leftover entanglement is a *record* of which branch "
                 "of the computation happened, and a branch that has been recorded can "
                 "no longer interfere with the others — which is where a quantum "
                 "algorithm's advantage comes from. Undo the operations that dirtied "
-                "these qubits, in reverse order."
+                f"{'this qubit' if one else 'these qubits'}, in reverse order."
             )
 
     # ---- system vs. environment ------------------------------------------------
@@ -371,10 +436,15 @@ class Inspector:
         reduced density matrix.
         """
         rho = self.reduced_density_matrix([q])
+        # The trailing + 0.0 turns -0.0 into 0.0, the same tidy-up
+        # ``entanglement_entropy`` does. |0⟩ has rho[0, 1] == 0, and -2 * 0.0 is
+        # negative zero in IEEE arithmetic, so the y-component of the north pole would
+        # otherwise print as "-0.0" — numerically identical to 0.0 and needlessly
+        # alarming to read next to a component that says 1.0.
         return (
-            float(2 * rho[0, 1].real),
-            float(-2 * rho[0, 1].imag),
-            float((rho[0, 0] - rho[1, 1]).real),
+            float(2 * rho[0, 1].real) + 0.0,
+            float(-2 * rho[0, 1].imag) + 0.0,
+            float((rho[0, 0] - rho[1, 1]).real) + 0.0,
         )
 
     # ---- observables and comparisons -------------------------------------------

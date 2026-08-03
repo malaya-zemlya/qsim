@@ -170,7 +170,7 @@ class Qubit:
     def __hash__(self): return id(self)
 ```
 
-There is deliberately **no `Qubit.state` / `.value` / `.amplitude` property**, and no `__bool__`.
+There is deliberately **no `Qubit.state` / `.value` / `.amplitude` property**, and no `__bool__`. There *is* a read-only `Qubit.circuit` / `Register.circuit` property (added Phase 3): a handle knows which circuit it names an axis of — that is bookkeeping, not physics — and blocks need it to open `qc.control`/`qc.ancilla` scopes without a redundant circuit parameter.
 
 ### 2.3 `Register`
 
@@ -301,6 +301,7 @@ This is exactly the physics, and the API should make it unmissable: decoherence 
 
 ```python
 qc.environment(count, *, name="") -> Register
+qc.environment_qubit(*, name="E") -> Qubit           # single-qubit convenience (added Phase 3)
 qc.inspect.system_density_matrix() -> np.ndarray    # traces out all environment qubits
 qc.inspect.system_entropy() -> float
 qc.inspect.coherence(q) -> float                    # |rho_01| of the reduced 1-qubit state
@@ -341,7 +342,7 @@ with qsim.within(H, q):                    # V = H(q), applied now
 Semantics, chosen to preserve the eager execution model:
 
 - `within(V, *args, **kwargs)` applies `V` immediately, *capturing* its ops as it does. The body is **not** recorded — it runs eagerly and the state stays watchable between its statements. On scope exit, the captured ops replay reversed and daggered. (Contrast with `control`, which must record its body: "run conditioned on c" is a counterfactual that has to execute *differently*, while "undo V later" only needs V remembered. This is the same asymmetry as PyTorch's tape: `backward()` is a tape operation, `vmap` is a function transform.)
-- `V` is any op-emitting callable — a gate, a `@qsim.gate` block, or a plain function; its qubit arguments identify the circuit. `V` must contain no measurement (nothing irreversible can be undone on exit).
+- `V` is any op-emitting callable — a gate, a `@qsim.gate` block, or a plain function; its qubit arguments identify the circuit. `V` must contain no measurement (nothing irreversible can be undone on exit). When V has a name (a block or gate), the emitted forward ops keep its stamp and the undo half is stamped `name†`, so `block_counts()` and diagrams show the conjugation symmetrically with `block.adjoint()`; anonymous callables stay unstamped (added Phase 3).
 - If the body raises, `V†` is **not** applied — consistent with the other scopes: never run half a construct on the way out of an error.
 - Conjugation *as a reusable block* is spelled with the existing abstraction mechanism, a `def`:
 
@@ -394,13 +395,14 @@ qc.inspect.assert_zero(subset, tol=1e-10) -> None
 qc.inspect.norm() -> float
 qc.inspect.bloch_vector(q) -> tuple[float, float, float]
 
+qc.inspect.marginal(subset) -> np.ndarray             # P over just those qubits, MSB-first in given order
 qc.inspect.expectation(pauli: str, reg: Register | None = None) -> float  # "ZZ", "XY", ...
 qc.inspect.mutual_information(a, b) -> float          # S(A) + S(B) - S(AB)
 qc.inspect.fidelity(other: np.ndarray) -> float
 qc.inspect.ket(max_terms: int = 8) -> Ket             # Dirac notation, renders as LaTeX (§10.1)
 ```
 
-`expectation` takes a Pauli string over a register (identity elsewhere) — the bread and butter of actual quantum mechanics, and required by the CHSH test (TB1). `mutual_information` is what the quantum-Darwinism demo (§11, Phase 7) reads out. `fidelity` exists mostly to keep acceptance tests (T9, T13) honest and readable.
+`marginal` exists because `probabilities()[0]` *reads* like P(q₀=0) but is P(|00…0⟩) — a trap that bit three demo notebooks before the helper was added (Phase 3). `expectation` takes a Pauli string over a register (identity elsewhere) — the bread and butter of actual quantum mechanics, and required by the CHSH test (TB1). `mutual_information` is what the quantum-Darwinism demo (§11, Phase 7) reads out. `fidelity` exists mostly to keep acceptance tests (T9, T13) honest and readable.
 
 **Partial trace implementation:** reshape the state tensor into `(2**k, 2**(n-k))` after moving the kept axes to the front, then `rho = M @ M.conj().T`. Entanglement entropy from the eigenvalues, or equivalently from the squared Schmidt coefficients (`np.linalg.svd` of `M`) — the SVD route is numerically better and makes the Schmidt decomposition explicit.
 
@@ -655,7 +657,7 @@ Not optional. Watching the QFT output go from flat to a comb of peaks at multipl
 ```python
 viz.amplitudes(qc, *, phase_as_hue=True)   # bar heights = |amp|, color = arg(amp)
 viz.probabilities(qc, top=32)
-viz.bloch(qc, q)
+viz.bloch(q)                               # circuit resolved from the handle (Qubit.circuit, Phase 3)
 viz.entropy_trace(qc)                       # entropy vs. gate index, requires replay
 viz.circuit(qc)                             # text/matplotlib diagram from history
 ```

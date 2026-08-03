@@ -8,6 +8,22 @@
 
 ---
 
+## 0. Pre-work: papercut fixes (library-wide, built and tested before the QFT)
+
+Nine items accumulated from demo-batch friction reports (three independent sightings for P1). All are part of this phase's deliverable; each fix ships with tests written as documentation, and coverage stays at 100%.
+
+- **P1 — `inspect.marginal(subset) -> np.ndarray`.** The probability distribution over just those qubits' outcomes, indexed MSB-first *in the order given* (so `marginal([b, a])` is `marginal([a, b])` with axes swapped — implement via |ψ|² summed over the complement axes, then `np.transpose` to the requested order, then flatten; comment the transpose). Docstring teaches the trap that motivated it: `probabilities()[0]` *reads* like P(q₀=0) but is P(|00…0⟩); `marginal([q])[0]` is the number you wanted. Tests: Bell-state single-qubit marginal is [.5,.5]; order permutation; a marginal over all qubits equals `probabilities()`; env qubits included only when asked.
+- **P2 — `DirtyAncillaError` grammar.** "anc0 are not in |0⟩" → singular/plural agreement. Test asserts the singular form for one ancilla.
+- **P3 — `bloch_vector` returns `-0.0`.** Add the same `+ 0.0` normalization `entanglement_entropy` already uses. Test: no component of |0⟩'s Bloch vector reprs as "-0".
+- **P4 — `Qubit.circuit` and `Register.circuit` read-only properties.** Blocks needing `qc.control` in their body currently take a redundant `qc` first parameter (B6 friction). `Register.circuit` raises `QsimError` on an empty register view with a message saying why it cannot know.
+- **P5 — `viz.bloch(q)`** (owner-approved breaking change): resolve the circuit from the handle via P4, like gates do. Remove the old two-argument form and **sweep every call site** — course notebooks, demo notebooks, viz tests — then re-execute all notebooks as part of verification.
+- **P6 — `qc.environment_qubit(name="E") -> Qubit`** alongside `environment(count) -> Register`, same split as `alloc()`/`alloc_many()`. Every Track B call site currently writes `environment(1)[0]`; do NOT rewrite shipped notebooks (they are committed teaching material) — the helper is for code going forward, and this phase's own uses.
+- **P7 — `within` stamps its ops** (owner-approved): when V is a `Block` or a gate (has `.name`), the emitted forward ops keep V's stamp and the undo half is stamped `name†`, with `block_counts()` showing both — symmetric with `block.adjoint()`. Plain functions/lambdas stay unstamped (record this as the boundary). Test mirrors the B4 asymmetry demo: `within(bell, a, b)` yields `{'bell': 1, 'bell†': 1}`.
+- **P8 — `inspect.sample` docstring** documents the deliberate determinism: same seed + same call history ⇒ identical `Counter`s, and why sampling draws from a separate stream than `measure` (already true in code; now stated for the reader A1 confused).
+- **P9 — recorded non-fix:** gate matrices stay private. Two builders independently concluded that extracting U by running basis states ("the columns of U are U|j⟩") is better pedagogy than an accessor; this is now a decision, not an accident.
+
+Update `qsim-design.md` cross-references if any drift is found beyond what the maintainer already edited (§2.1/§2.2/§4.5/§5/§10).
+
 ## 1. `algorithms/qft.py`
 
 ```python
@@ -48,9 +64,10 @@ Document the two precision facts from design doc §8.1 (phase-register size for 
 
 ```python
 def phase_estimation(unitary: Block, target: Register, out: Register) -> None
-def semiclassical_phase_estimation(unitary: Block, target: Register, t: int,
-                                   *, circuit: Circuit) -> int
+def semiclassical_phase_estimation(unitary: Block, target: Register, t: int) -> int
 ```
+
+(Argument name `target`, not the design doc's `eigenstate` — owner-resolved: the register need *not* hold an eigenstate; Shor's passes a superposition of them, which is the whole trick. The docstring explains both cases. The semiclassical version needs no `circuit` parameter: it resolves the circuit from `target.circuit` — papercut P4 paying for itself immediately.)
 
 Docstring pitch (no QM assumed): a unitary's eigenvalues all have absolute value 1, so each is e^{2πiφ} — "a phase". Phase estimation reads φ to t binary digits. It is the universal quantum measuring instrument: Shor's is phase estimation of a multiplication map.
 
@@ -86,8 +103,52 @@ Docstring pitch (no QM assumed): a unitary's eigenvalues all have absolute value
 - T11 contains the convention-documenting comment block; module docstrings meet the pedagogy bar.
 - Report "Decisions made".
 
-## Interface decisions to review with the owner (before building)
+## Interface decisions — RESOLVED (owner review 2026-08-02)
 
-1. `phase_estimation(unitary, target, out)` argument order and names (design doc says `eigenstate` for the target register — propose `target` with the docstring noting it should hold an eigenstate; confirm which name the owner finds clearer).
-2. Semiclassical signature: it needs a circuit and returns an int — show the call in context (it allocates its own phase qubit inside `circuit`); confirm ergonomics.
-3. `iqft` as separate function vs `qft.adjoint()` only — recommend keeping both (`iqft` reads better in Shor's), confirm.
+1. **`target`, not `eigenstate`** — the register need not hold an eigenstate (Shor's passes a superposition); the design doc's name was misleading at the call site that matters most.
+2. **Semiclassical signature takes no circuit** — resolved from `target.circuit` (new P4 property); returns `int`.
+3. **`iqft` stays a named public function**, implemented via `qft.adjoint()` internally (demonstrates the closed algebra in production).
+4. **Papercuts approved as a package** (owner: "incorporate solutions to the papercuts"), with four call-shape decisions taken explicitly: `phase_estimation` naming as above; **`viz.bloch(q)`** replaces `viz.bloch(qc, q)` with a full call-site sweep; **`environment_qubit()`** added alongside `environment(count)`; **`within` stamps V and V†** when V has a name, mirroring the block algebra's `name†` convention.
+
+## Deviations from this plan (recorded after the build)
+
+Everything in §0–§4 was built. The list below is what came out differently, and why.
+
+1. **`within` stamping is narrower than "stamps its ops" suggests (P7).** A named V is
+   *counted* in `block_counts()` on both halves (`V` and `V†`), exactly as decision 4
+   says. But the `Op.block` stamp is rewritten on the undo half **only when V is a
+   `Block`**. A bare gate's ops are stamped with whichever block is being recorded
+   *around* the scope, and overwriting that on one half alone would misreport where those
+   gates came from — the forward `H` of a `within(H, q)` inside `x_dephasing` really did
+   come from `x_dephasing`. The boundary for *counting* is still "V has a `.name`", so
+   plain functions and lambdas stay out of the tally.
+2. **One existing test changed as a consequence of P7.** `tests/test_tape.py::
+   test_within_inside_a_block_is_recorded_as_part_of_it` asserted
+   `block_counts() == {"flip_in_x": 1}`; it now asserts
+   `{"flip_in_x": 1, "H": 1, "H†": 1}`, because its V is the named gate `H`. The
+   assertion was updated, not weakened — it documents the new behaviour. `Circuit.
+   block_counts`' docstring was widened from "each `@qsim.gate` block" to "each named
+   composite" to match.
+3. **Notebook 04's markdown was edited (one sentence).** It quotes `DirtyAncillaError`'s
+   text verbatim, which P2 changed. Leaving it would have made shipped teaching material
+   disagree with the library — the one thing `notebooks/CLAUDE.md` says never to do. No
+   other content in a committed notebook was touched; P6's `environment(1)[0]` call sites
+   were left alone as instructed.
+4. **T15 uses t = 4 digits.** The plan fixed φ = 0.3, 500 seeded runs and TVD < 0.05 but
+   left `t` open. t = 4 is the choice that makes the sampling noise smallest: measured
+   over 20,000 multinomial redraws, the expected TVD at 500 shots is 0.026 for t = 4
+   against 0.034 (t = 3) and 0.049 (t = 5). The observed value is 0.0396. A 20,000-shot
+   run gives 0.0037, confirming the residual is sampling noise and not bias.
+5. **`Register.circuit` on an empty register raises `QsimError`**, as specified; the
+   equivalent question on `qft`/`phase_estimation` with an empty register is answered by
+   the existing `Block` guard ("a block must be given at least one qubit…") rather than
+   by a second message.
+6. **Design doc §7's file-content list is stale, not contradictory.** It lists
+   `qft, iqft, approximate_qft, semiclassical_qft` as the contents of `algorithms/qft.py`.
+   §8.1 and §8.2 — which this plan follows — fold the approximate transform into
+   `qft(..., approx=m)` and put the semiclassical routine in `phase_estimation.py` as
+   `semiclassical_phase_estimation`. Nothing was built to §7's names.
+7. **Papercut tests live in `tests/test_qft.py`**, in a clearly separated second half,
+   rather than being scattered into `test_inspector.py` / `test_circuit.py` /
+   `test_viz.py`. This keeps the phase reviewable in one place; if the papercuts are ever
+   revisited, moving each block next to its module is a mechanical change.
